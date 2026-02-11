@@ -159,7 +159,8 @@ export function useGenerationStream() {
           prompts.length,
           settings.numImages,
           settings.resolution,
-          settings.enableWebSearch
+          settings.enableWebSearch,
+          settings.provider
         ),
       };
 

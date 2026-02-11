@@ -18,6 +18,8 @@ interface BatchState {
   settings: GenerationSettings;
   batchName: string;
   currentBatch: Batch | null;
+  savedBatch: Batch | null;
+  viewingHistory: boolean;
 }
 
 type BatchAction =
@@ -32,6 +34,8 @@ type BatchAction =
   | { type: "REPLACE_IMAGE_VERSION"; index: number; newVersion: ImageVersion; newResult: BatchImage["result"] }
   | { type: "ADD_IMAGES"; images: BatchImage[] }
   | { type: "SET_IMAGE_VERSION"; index: number; versionNumber: number }
+  | { type: "VIEW_HISTORY_BATCH"; batch: Batch }
+  | { type: "BACK_TO_CURRENT" }
   | { type: "HYDRATE"; currentBatch: Batch | null; settings?: GenerationSettings };
 
 function batchReducer(state: BatchState, action: BatchAction): BatchState {
@@ -143,6 +147,22 @@ function batchReducer(state: BatchState, action: BatchAction): BatchState {
       };
     }
 
+    case "VIEW_HISTORY_BATCH":
+      return {
+        ...state,
+        savedBatch: state.viewingHistory ? state.savedBatch : state.currentBatch,
+        currentBatch: action.batch,
+        viewingHistory: true,
+      };
+
+    case "BACK_TO_CURRENT":
+      return {
+        ...state,
+        currentBatch: state.savedBatch,
+        savedBatch: null,
+        viewingHistory: false,
+      };
+
     case "HYDRATE":
       return {
         ...state,
@@ -160,6 +180,8 @@ const initialState: BatchState = {
   settings: DEFAULT_SETTINGS,
   batchName: "",
   currentBatch: null,
+  savedBatch: null,
+  viewingHistory: false,
 };
 
 const BatchContext = createContext<{
@@ -190,7 +212,9 @@ export function BatchProvider({ children }: { children: ReactNode }) {
         dispatch({
           type: "HYDRATE",
           currentBatch: batch,
-          settings: savedSettings ?? undefined,
+          settings: savedSettings
+            ? { ...DEFAULT_SETTINGS, ...savedSettings }
+            : undefined,
         });
       } catch {
         // IndexedDB not available, continue with defaults
@@ -200,9 +224,9 @@ export function BatchProvider({ children }: { children: ReactNode }) {
     hydrate();
   }, []);
 
-  // Persist batch state on changes (debounced)
+  // Persist batch state on changes (debounced) — skip when viewing history
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || state.viewingHistory) return;
     const timeout = setTimeout(() => {
       if (state.currentBatch) {
         saveCurrentBatch(state.currentBatch);
@@ -211,7 +235,7 @@ export function BatchProvider({ children }: { children: ReactNode }) {
       }
     }, 300);
     return () => clearTimeout(timeout);
-  }, [state.currentBatch, hydrated]);
+  }, [state.currentBatch, state.viewingHistory, hydrated]);
 
   // Persist settings on changes
   useEffect(() => {

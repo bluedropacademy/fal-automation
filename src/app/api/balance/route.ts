@@ -1,8 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 const FAL_API_BASE = "https://api.fal.ai/v1";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const provider = request.nextUrl.searchParams.get("provider") ?? "fal";
+
+  if (provider === "kie") {
+    return NextResponse.json({
+      source: "unavailable",
+      provider: "kie",
+      message: "Kie AI does not provide a billing API. Check your dashboard at kie.ai.",
+    });
+  }
+
   const key = process.env.FAL_KEY;
   if (!key) {
     return NextResponse.json({ error: "FAL_KEY not configured" }, { status: 500 });

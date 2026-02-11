@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Wallet, RefreshCw, AlertCircle } from "lucide-react";
+import { Wallet, RefreshCw, AlertCircle, ExternalLink } from "lucide-react";
 import { USD_TO_ILS } from "@/lib/constants";
+import { useBatch } from "@/hooks/useBatch";
 
 interface BalanceData {
   source: string;
+  provider?: string;
+  message?: string;
   monthlySpendUsd?: number;
   requestCount?: number;
   month?: string;
@@ -13,13 +16,15 @@ interface BalanceData {
 }
 
 export function BalanceDisplay() {
+  const { state } = useBatch();
+  const provider = state.settings.provider ?? "fal";
   const [data, setData] = useState<BalanceData | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchBalance = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/balance");
+      const res = await fetch(`/api/balance?provider=${provider}`);
       const json = await res.json();
       setData(json);
     } catch {
@@ -27,7 +32,7 @@ export function BalanceDisplay() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [provider]);
 
   useEffect(() => {
     fetchBalance();
@@ -38,6 +43,25 @@ export function BalanceDisplay() {
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground animate-pulse">
         <Wallet className="h-3.5 w-3.5" />
         <span>טוען...</span>
+      </div>
+    );
+  }
+
+  // Kie AI — no billing API
+  if (provider === "kie") {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Wallet className="h-3.5 w-3.5 text-primary" />
+        <span>Kie AI — </span>
+        <a
+          href="https://kie.ai/logs"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary hover:underline inline-flex items-center gap-0.5"
+        >
+          צפה בעלויות
+          <ExternalLink className="h-2.5 w-2.5" />
+        </a>
       </div>
     );
   }

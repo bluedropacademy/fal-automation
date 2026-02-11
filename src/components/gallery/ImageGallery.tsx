@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { Download, ImageIcon } from "lucide-react";
 import { toast } from "sonner";
+import JSZip from "jszip";
 import { useBatch } from "@/hooks/useBatch";
 import { SectionCard } from "@/components/common/SectionCard";
 import { ImageCard } from "./ImageCard";
@@ -23,30 +24,39 @@ export function ImageGallery() {
 
     setDownloading(true);
     try {
-      const res = await fetch("/api/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          batchId: batch.id,
-          batchName: batch.name,
-          images: completedImages.map((img) => ({
-            index: img.index,
-            url: img.result!.url,
-            prompt: img.rawPrompt,
-            outputFormat: batch.settings.outputFormat,
-            versionLabel: img.versionLabel,
-          })),
-        }),
-      });
+      const zip = new JSZip();
+      const total = completedImages.length;
+      const digits = Math.max(3, String(total).length);
 
-      const data = await res.json();
-      if (res.ok) {
-        toast.success("ההורדה הושלמה!", {
-          description: `${data.successCount} תמונות נשמרו ב:\n${data.downloadPath}`,
-        });
-      } else {
-        toast.error("שגיאה בהורדה", { description: data.error });
-      }
+      await Promise.all(
+        completedImages.map(async (img) => {
+          try {
+            const res = await fetch(`/api/image-proxy?url=${encodeURIComponent(img.result!.url)}`);
+            if (!res.ok) return;
+            const blob = await res.blob();
+            const ext = batch.settings.outputFormat || "png";
+            const versionSuffix = img.versionLabel ? `-${img.versionLabel}` : "";
+            const idx = String(img.index + 1).padStart(digits, "0");
+            const filename = `${idx}${versionSuffix}.${ext}`;
+            zip.file(filename, blob);
+          } catch {
+            // skip failed
+          }
+        })
+      );
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${batch.name || "images"}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("ההורדה הושלמה!", {
+        description: `${completedImages.length} תמונות הורדו כ-ZIP`,
+      });
     } catch (error) {
       toast.error("שגיאה בהורדה", {
         description: error instanceof Error ? error.message : "שגיאה לא ידועה",

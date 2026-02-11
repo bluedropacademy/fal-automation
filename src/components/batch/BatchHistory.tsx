@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronUp, Trash2, Images } from "lucide-react";
+import { ChevronDown, ChevronUp, Trash2, Images, ArrowRight } from "lucide-react";
 import { useBatch } from "@/hooks/useBatch";
 import { loadBatchHistory, deleteBatchFromHistory } from "@/lib/persistence";
 import type { Batch } from "@/types/batch";
@@ -28,10 +28,14 @@ export function BatchHistory() {
 
   const handleLoad = useCallback(
     (batch: Batch) => {
-      dispatch({ type: "START_BATCH", batch });
+      dispatch({ type: "VIEW_HISTORY_BATCH", batch });
     },
     [dispatch]
   );
+
+  const handleBack = useCallback(() => {
+    dispatch({ type: "BACK_TO_CURRENT" });
+  }, [dispatch]);
 
   const handleDelete = useCallback(
     async (e: React.MouseEvent, batchId: string) => {
@@ -67,6 +71,15 @@ export function BatchHistory() {
 
       {open && (
         <div className="mt-2 flex flex-col gap-1.5 max-h-64 overflow-y-auto">
+          {state.viewingHistory && (
+            <button
+              onClick={handleBack}
+              className="flex items-center gap-2 rounded-md border border-primary bg-primary/10 px-2.5 py-2 text-right text-xs font-medium text-primary hover:bg-primary/20 transition-colors"
+            >
+              <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+              חזרה לבאצ׳ הנוכחי
+            </button>
+          )}
           {batches.map((batch) => {
             const completedCount = batch.images.filter(
               (img) => img.status === "completed"

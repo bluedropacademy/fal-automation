@@ -99,6 +99,7 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
       body: JSON.stringify({
         imageUrl,
         prompt: prompt.trim(),
+        provider: settings.provider ?? "fal",
         settings: {
           resolution: settings.resolution,
           aspectRatio: settings.aspectRatio,
@@ -196,6 +197,7 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
       body: JSON.stringify({
         imageUrl,
         variations,
+        provider: settings.provider ?? "fal",
         settings: {
           resolution: settings.resolution,
           aspectRatio: settings.aspectRatio,

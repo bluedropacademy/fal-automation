@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fal } from "@/lib/fal-server";
-import { FAL_MODEL_IMAGE_EDIT } from "@/lib/constants";
+import { getProvider } from "@/lib/providers";
+import type { Provider } from "@/types/generation";
 
 export const maxDuration = 300;
 
 interface EditRequestBody {
   imageUrl: string;
   prompt: string;
+  provider?: string;
   settings: {
     resolution: string;
     aspectRatio: string;
@@ -25,6 +26,7 @@ interface EditVariation {
 interface ParallelEditRequestBody {
   imageUrl: string;
   variations: EditVariation[];
+  provider?: string;
   settings: EditRequestBody["settings"];
 }
 
@@ -49,94 +51,64 @@ export async function POST(request: NextRequest) {
 
 async function handleSingleEdit(body: EditRequestBody) {
   const { imageUrl, prompt, settings } = body;
+  const providerName = (body.provider as Provider) ?? "fal";
+  const provider = getProvider(providerName);
 
-  const input: Record<string, unknown> = {
+  const result = await provider.editImage({
     prompt,
-    image_urls: [imageUrl],
-    num_images: 1,
+    imageUrls: [imageUrl],
     resolution: settings.resolution,
-    aspect_ratio: settings.aspectRatio,
-    output_format: settings.outputFormat,
-    safety_tolerance: String(settings.safetyTolerance),
-    enable_web_search: settings.enableWebSearch,
-  };
+    aspectRatio: settings.aspectRatio,
+    outputFormat: settings.outputFormat,
+    safetyTolerance: settings.safetyTolerance,
+    enableWebSearch: settings.enableWebSearch,
+    seed: settings.seed,
+  });
 
-  if (settings.seed !== undefined) {
-    input.seed = settings.seed;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = await (fal as any).subscribe(FAL_MODEL_IMAGE_EDIT, { input });
-
-  const data = result.data as {
-    images: Array<{
-      url: string;
-      content_type: string;
-      width: number;
-      height: number;
-    }>;
-    seed?: number;
-  };
-
-  const image = data.images[0];
+  const image = result.images[0];
 
   return NextResponse.json({
     image: {
       url: image.url,
-      contentType: image.content_type,
+      contentType: image.contentType,
       width: image.width,
       height: image.height,
     },
-    seed: data.seed,
+    seed: result.seed,
     requestId: result.requestId,
   });
 }
 
 async function handleParallelEdit(body: ParallelEditRequestBody) {
   const { imageUrl, variations, settings } = body;
+  const providerName = (body.provider as Provider) ?? "fal";
+  const provider = getProvider(providerName);
 
   const results = await Promise.allSettled(
     variations.map(async (variation) => {
-      const input: Record<string, unknown> = {
+      const result = await provider.editImage({
         prompt: variation.prompt,
-        image_urls: [imageUrl],
-        num_images: 1,
+        imageUrls: [imageUrl],
         resolution: settings.resolution,
-        aspect_ratio: settings.aspectRatio,
-        output_format: settings.outputFormat,
-        safety_tolerance: String(settings.safetyTolerance),
-        enable_web_search: settings.enableWebSearch,
-      };
+        aspectRatio: settings.aspectRatio,
+        outputFormat: settings.outputFormat,
+        safetyTolerance: settings.safetyTolerance,
+        enableWebSearch: settings.enableWebSearch,
+        seed: settings.seed,
+      });
 
-      if (settings.seed !== undefined) {
-        input.seed = settings.seed;
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await (fal as any).subscribe(FAL_MODEL_IMAGE_EDIT, { input });
-
-      const data = result.data as {
-        images: Array<{
-          url: string;
-          content_type: string;
-          width: number;
-          height: number;
-        }>;
-        seed?: number;
-      };
-
-      const image = data.images[0];
+      const image = result.images[0];
 
       return {
         label: variation.label,
         prompt: variation.prompt,
         image: {
           url: image.url,
-          contentType: image.content_type,
+          contentType: image.contentType,
           width: image.width,
           height: image.height,
         },
-        seed: data.seed,
+        seed: result.seed,
         requestId: result.requestId,
       };
     })
@@ -147,7 +119,7 @@ async function handleParallelEdit(body: ParallelEditRequestBody) {
     prompt: string;
     image: { url: string; contentType: string; width: number; height: number };
     seed?: number;
-    requestId: string;
+    requestId?: string;
   }> = [];
 
   const failedResults: Array<{ label: string; error: string }> = [];

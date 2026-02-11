@@ -1,6 +1,9 @@
 import type { ImageStatus } from "./batch";
 
+export type Provider = "fal" | "kie";
+
 export interface GenerationSettings {
+  provider: Provider;
   resolution: "1K" | "2K" | "4K";
   aspectRatio: string;
   outputFormat: "png" | "jpeg" | "webp";

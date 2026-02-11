@@ -4,6 +4,7 @@ export interface LogEntry {
   imageIndex: number;
   prompt: string;
   parameters: {
+    provider?: string;
     resolution: string;
     aspectRatio: string;
     outputFormat: string;

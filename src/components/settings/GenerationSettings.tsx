@@ -4,7 +4,8 @@ import { useState } from "react";
 import { ChevronDown, Info } from "lucide-react";
 import { useBatch } from "@/hooks/useBatch";
 import { Tooltip } from "@/components/common/Tooltip";
-import { RESOLUTIONS, ASPECT_RATIOS, OUTPUT_FORMATS, PRICING, USD_TO_ILS, WEB_SEARCH_ADDON_PRICE } from "@/lib/constants";
+import { RESOLUTIONS, ASPECT_RATIOS, OUTPUT_FORMATS, PRICING, KIE_PRICING, USD_TO_ILS, WEB_SEARCH_ADDON_PRICE } from "@/lib/constants";
+import type { Provider } from "@/types/generation";
 
 const SAFETY_LABELS: Record<number, string> = {
   1: "מחמיר מאוד",
@@ -15,10 +16,21 @@ const SAFETY_LABELS: Record<number, string> = {
   6: "מתירני מאוד",
 };
 
+const PROVIDERS: Array<{ value: Provider; label: string; price: string }> = [
+  { value: "fal", label: "Fal AI", price: "מ-$0.15" },
+  { value: "kie", label: "Kie AI", price: "מ-$0.09" },
+];
+
 export function GenerationSettings() {
   const { state, dispatch } = useBatch();
   const { settings } = state;
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const isFal = (settings.provider ?? "fal") !== "kie";
+  const currentPricing = isFal ? PRICING : KIE_PRICING;
+  const availableFormats = isFal
+    ? OUTPUT_FORMATS
+    : OUTPUT_FORMATS.filter((f) => f !== "webp");
 
   const updateSetting = (update: Partial<typeof settings>) => {
     dispatch({ type: "SET_SETTINGS", settings: update });
@@ -26,6 +38,47 @@ export function GenerationSettings() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Provider Selection */}
+      <div>
+        <label className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground mb-1.5">
+          ספק AI
+          <Tooltip content="Fal AI — יותר תכונות (סיד, חיפוש ברשת, מספר תמונות). Kie AI — זול יותר (~40% חיסכון)">
+            <Info className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
+          </Tooltip>
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          {PROVIDERS.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => {
+                const update: Partial<typeof settings> = { provider: p.value };
+                if (p.value === "kie") {
+                  update.numImages = 1;
+                  update.enableWebSearch = false;
+                  update.seed = undefined;
+                  if (settings.outputFormat === "webp") {
+                    update.outputFormat = "png";
+                  }
+                }
+                updateSetting(update);
+              }}
+              className={`flex flex-col items-center rounded-lg px-3 py-2.5 transition-all ${
+                (settings.provider ?? "fal") === p.value
+                  ? "bg-primary text-primary-foreground shadow-sm ring-2 ring-primary/30"
+                  : "bg-white border border-border text-foreground hover:border-primary/30 hover:bg-primary/5"
+              }`}
+            >
+              <span className="text-sm font-bold">{p.label}</span>
+              <span className={`text-xs mt-0.5 ${
+                (settings.provider ?? "fal") === p.value ? "text-primary-foreground/80" : "text-muted-foreground"
+              }`}>
+                {p.price}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Resolution */}
       <div>
         <label className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground mb-1.5">
@@ -49,7 +102,7 @@ export function GenerationSettings() {
               <span className={`text-xs mt-0.5 ${
                 settings.resolution === res ? "text-primary-foreground/80" : "text-muted-foreground"
               }`}>
-                ₪{(PRICING[res] * USD_TO_ILS).toFixed(2)}
+                ₪{(currentPricing[res] * USD_TO_ILS).toFixed(2)}
               </span>
             </button>
           ))}
@@ -85,8 +138,8 @@ export function GenerationSettings() {
             <Info className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
           </Tooltip>
         </label>
-        <div className="grid grid-cols-3 gap-2">
-          {OUTPUT_FORMATS.map((fmt) => (
+        <div className={`grid gap-2 ${isFal ? "grid-cols-3" : "grid-cols-2"}`}>
+          {availableFormats.map((fmt) => (
             <button
               key={fmt}
               onClick={() => updateSetting({ outputFormat: fmt })}
@@ -120,74 +173,80 @@ export function GenerationSettings() {
       >
         <div className="overflow-hidden">
           <div className="flex flex-col gap-4">
-            {/* Safety Tolerance */}
-            <div>
-              <label className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground mb-1.5">
-                רמת בטיחות:{" "}
-                <span className="text-foreground font-semibold">
-                  {SAFETY_LABELS[settings.safetyTolerance]}
-                </span>
-                <Tooltip content="ככל שהערך גבוה יותר, המודל מתירני יותר בתוכן. ברירת מחדל: רגיל (4)">
-                  <Info className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
-                </Tooltip>
-              </label>
-              <input
-                type="range"
-                min={1}
-                max={6}
-                value={settings.safetyTolerance}
-                onChange={(e) => updateSetting({ safetyTolerance: Number(e.target.value) })}
-                className="w-full accent-primary"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>מחמיר</span>
-                <span>מתירני</span>
+            {/* Safety Tolerance — Fal only */}
+            {isFal && (
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground mb-1.5">
+                  רמת בטיחות:{" "}
+                  <span className="text-foreground font-semibold">
+                    {SAFETY_LABELS[settings.safetyTolerance]}
+                  </span>
+                  <Tooltip content="ככל שהערך גבוה יותר, המודל מתירני יותר בתוכן. ברירת מחדל: רגיל (4)">
+                    <Info className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
+                  </Tooltip>
+                </label>
+                <input
+                  type="range"
+                  min={1}
+                  max={6}
+                  value={settings.safetyTolerance}
+                  onChange={(e) => updateSetting({ safetyTolerance: Number(e.target.value) })}
+                  className="w-full accent-primary"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>מחמיר</span>
+                  <span>מתירני</span>
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Num Images Per Prompt */}
-            <div>
-              <label className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground mb-1.5">
-                תמונות לכל פרומפט
-                <Tooltip content="מספר תמונות שונות שייווצרו לכל פרומפט">
-                  <Info className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
-                </Tooltip>
-              </label>
-              <select
-                value={settings.numImages}
-                onChange={(e) => updateSetting({ numImages: Number(e.target.value) })}
-                className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
-              >
-                {[1, 2, 3, 4].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Num Images Per Prompt — Fal only */}
+            {isFal && (
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground mb-1.5">
+                  תמונות לכל פרומפט
+                  <Tooltip content="מספר תמונות שונות שייווצרו לכל פרומפט">
+                    <Info className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
+                  </Tooltip>
+                </label>
+                <select
+                  value={settings.numImages}
+                  onChange={(e) => updateSetting({ numImages: Number(e.target.value) })}
+                  className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                >
+                  {[1, 2, 3, 4].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            {/* Seed */}
-            <div>
-              <label className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground mb-1.5">
-                סיד (אופציונלי)
-                <Tooltip content="ערך קבוע מייצר תוצאה זהה. השאר ריק לתוצאות אקראיות">
-                  <Info className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
-                </Tooltip>
-              </label>
-              <input
-                type="number"
-                value={settings.seed ?? ""}
-                onChange={(e) =>
-                  updateSetting({
-                    seed: e.target.value ? Number(e.target.value) : undefined,
-                  })
-                }
-                placeholder="אקראי"
-                className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
-              />
-            </div>
+            {/* Seed — Fal only */}
+            {isFal && (
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground mb-1.5">
+                  סיד (אופציונלי)
+                  <Tooltip content="ערך קבוע מייצר תוצאה זהה. השאר ריק לתוצאות אקראיות">
+                    <Info className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
+                  </Tooltip>
+                </label>
+                <input
+                  type="number"
+                  value={settings.seed ?? ""}
+                  onChange={(e) =>
+                    updateSetting({
+                      seed: e.target.value ? Number(e.target.value) : undefined,
+                    })
+                  }
+                  placeholder="אקראי"
+                  className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                />
+              </div>
+            )}
 
-            {/* Concurrency */}
+            {/* Concurrency — both providers */}
             <div>
               <label className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground mb-1.5">
                 מקביליות
@@ -212,21 +271,23 @@ export function GenerationSettings() {
               </div>
             </div>
 
-            {/* Web Search */}
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={settings.enableWebSearch}
-                onChange={(e) => updateSetting({ enableWebSearch: e.target.checked })}
-                className="h-4 w-4 rounded border-border accent-primary"
-              />
-              <span className="text-sm font-medium text-muted-foreground">
-                חיפוש ברשת (+₪{(WEB_SEARCH_ADDON_PRICE * USD_TO_ILS).toFixed(3)})
-              </span>
-              <Tooltip content="חיפוש ברשת לתמונות עדכניות. מוסיף עלות קטנה לכל תמונה">
-                <Info className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
-              </Tooltip>
-            </label>
+            {/* Web Search — Fal only */}
+            {isFal && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={settings.enableWebSearch}
+                  onChange={(e) => updateSetting({ enableWebSearch: e.target.checked })}
+                  className="h-4 w-4 rounded border-border accent-primary"
+                />
+                <span className="text-sm font-medium text-muted-foreground">
+                  חיפוש ברשת (+₪{(WEB_SEARCH_ADDON_PRICE * USD_TO_ILS).toFixed(3)})
+                </span>
+                <Tooltip content="חיפוש ברשת לתמונות עדכניות. מוסיף עלות קטנה לכל תמונה">
+                  <Info className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
+                </Tooltip>
+              </label>
+            )}
           </div>
         </div>
       </div>

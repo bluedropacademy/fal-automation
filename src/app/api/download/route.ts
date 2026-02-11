@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
-import { ensureDownloadDir, downloadImage } from "@/lib/file-utils";
+import archiver from "archiver";
+import { Readable, PassThrough } from "stream";
 import { padIndex, sanitizeFilename } from "@/lib/format-utils";
 
 interface DownloadItem {
@@ -13,41 +13,46 @@ interface DownloadItem {
 
 export async function POST(request: NextRequest) {
   try {
-    const { batchId, batchName, images } = (await request.json()) as {
+    const { batchName, images } = (await request.json()) as {
       batchId: string;
       batchName?: string;
       images: DownloadItem[];
     };
 
-    const dir = await ensureDownloadDir(batchId, batchName);
-    const total = images.length;
-    const results: { index: number; success: boolean; path?: string; error?: string }[] = [];
+    const archive = archiver("zip", { zlib: { level: 5 } });
+    const passthrough = new PassThrough();
+    archive.pipe(passthrough);
 
-    for (const item of images) {
+    const total = images.length;
+    const fetches = images.map(async (item) => {
       const ext = item.outputFormat || "png";
       const versionSuffix = item.versionLabel ? `-${item.versionLabel}` : "";
       const filename = `${padIndex(item.index, total)}-${sanitizeFilename(item.prompt)}${versionSuffix}.${ext}`;
-      const filePath = path.join(dir, filename);
 
       try {
-        await downloadImage(item.url, filePath);
-        results.push({ index: item.index, success: true, path: filePath });
-      } catch (error) {
-        results.push({
-          index: item.index,
-          success: false,
-          error: error instanceof Error ? error.message : "Download failed",
-        });
+        const response = await fetch(item.url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const buffer = Buffer.from(await response.arrayBuffer());
+        archive.append(buffer, { name: filename });
+      } catch {
+        // skip failed images
       }
-    }
+    });
 
-    const successCount = results.filter((r) => r.success).length;
+    await Promise.all(fetches);
+    archive.finalize();
 
-    return NextResponse.json({
-      downloadPath: dir,
-      total,
-      successCount,
-      results,
+    const zipName = batchName?.trim()
+      ? sanitizeFilename(batchName) || "images"
+      : "images";
+
+    const webStream = Readable.toWeb(passthrough) as ReadableStream;
+
+    return new Response(webStream, {
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="${zipName}.zip"`,
+      },
     });
   } catch (error) {
     return NextResponse.json(
