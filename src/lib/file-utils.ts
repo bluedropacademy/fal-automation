@@ -92,12 +92,15 @@ export async function readLogs(date?: string, batchId?: string): Promise<LogEntr
 
 // --- Downloads ---
 
-export function getDownloadDir(batchId: string): string {
-  return path.join(DOWNLOADS_DIR, `batch-${batchId}`);
+export function getDownloadDir(batchId: string, batchName?: string): string {
+  const folderName = batchName?.trim()
+    ? batchName.trim().replace(/[<>:"/\\|?*]/g, "_").substring(0, 100)
+    : `batch-${batchId}`;
+  return path.join(DOWNLOADS_DIR, folderName);
 }
 
-export async function ensureDownloadDir(batchId: string): Promise<string> {
-  const dir = getDownloadDir(batchId);
+export async function ensureDownloadDir(batchId: string, batchName?: string): Promise<string> {
+  const dir = getDownloadDir(batchId, batchName);
   await fs.mkdir(dir, { recursive: true });
   return dir;
 }

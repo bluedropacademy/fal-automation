@@ -1,8 +1,22 @@
 export type ImageStatus = "pending" | "queued" | "processing" | "completed" | "failed";
 
-export type BatchStatus = "idle" | "running" | "completed" | "cancelled" | "error";
+export type BatchStatus = "idle" | "running" | "completed" | "cancelled" | "error" | "interrupted";
+
+export type EditMode = "replace" | "duplicate" | "parallel";
+
+export interface ImageVersion {
+  versionNumber: number;
+  url: string;
+  contentType: string;
+  width: number;
+  height: number;
+  editPrompt: string;
+  createdAt: string;
+}
 
 export interface BatchImage {
+  /** Unique identifier for this image within the batch */
+  id: string;
   index: number;
   rawPrompt: string;
   fullPrompt: string;
@@ -19,6 +33,14 @@ export interface BatchImage {
   startedAt?: string;
   completedAt?: string;
   durationMs?: number;
+  /** Version history (V1 = original). Only present if the image has been edited. */
+  versions?: ImageVersion[];
+  /** Which version is currently displayed. undefined = latest */
+  currentVersion?: number;
+  /** If this image was created via duplicate/parallel edit, references the source image index */
+  sourceImageIndex?: number;
+  /** Edit label for images created from edits (e.g. "V2", "V3") */
+  versionLabel?: string;
 }
 
 export interface Batch {

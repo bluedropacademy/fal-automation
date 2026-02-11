@@ -13,7 +13,12 @@
       "Bash(dir:*)",
       "Bash(timeout:*)",
       "WebFetch(domain:localhost)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "WebFetch(domain:fal-ai.github.io)",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:api.fal.ai)",
+      "Bash(where:*)",
+      "Bash(npm run dev:*)"
     ]
   }
 }

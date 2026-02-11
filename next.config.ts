@@ -5,15 +5,11 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "fal.media",
+        hostname: "**.fal.media",
       },
       {
         protocol: "https",
-        hostname: "*.fal.ai",
-      },
-      {
-        protocol: "https",
-        hostname: "v3.fal.media",
+        hostname: "**.fal.ai",
       },
     ],
   },

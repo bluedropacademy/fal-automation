@@ -58,8 +58,6 @@ export function PresetManager() {
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-semibold text-foreground">פריסטים</h3>
-
       <select
         value={selectedPreset}
         onChange={(e) => handleLoad(e.target.value)}
@@ -96,8 +94,8 @@ export function PresetManager() {
 
       {/* Save Dialog */}
       {showSaveDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="animate-modal-in w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
             <h3 className="text-lg font-semibold">שמור פריסט</h3>
             <input
               type="text"
@@ -106,19 +104,19 @@ export function PresetManager() {
               placeholder="שם הפריסט"
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && handleSave()}
-              className="mt-3 w-full rounded-md border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none"
+              className="mt-3 w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
-            <div className="mt-4 flex gap-2">
+            <div className="mt-5 flex gap-3">
               <button
                 onClick={handleSave}
                 disabled={!presetName.trim()}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600 disabled:opacity-50"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600 disabled:opacity-50 transition-colors"
               >
                 שמור
               </button>
               <button
                 onClick={() => setShowSaveDialog(false)}
-                className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
               >
                 ביטול
               </button>

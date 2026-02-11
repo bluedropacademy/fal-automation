@@ -16,8 +16,12 @@ export const PRICING: Record<string, number> = {
 
 export const WEB_SEARCH_ADDON_PRICE = 0.015;
 
+export const USD_TO_ILS = 3.6;
+
 export const FAL_MODEL_TEXT_TO_IMAGE = "fal-ai/nano-banana-pro";
 export const FAL_MODEL_IMAGE_EDIT = "fal-ai/nano-banana-pro/edit";
+
+export const MAX_CONCURRENCY = 4;
 
 export const DEFAULT_SETTINGS: GenerationSettings = {
   resolution: "1K",
@@ -29,6 +33,7 @@ export const DEFAULT_SETTINGS: GenerationSettings = {
   promptPrefix: "",
   promptSuffix: "",
   referenceImageUrls: [],
+  concurrency: 2,
 };
 
 export function estimateCost(
@@ -38,7 +43,7 @@ export function estimateCost(
   enableWebSearch: boolean
 ): number {
   const perImage = (PRICING[resolution] ?? 0.15) + (enableWebSearch ? WEB_SEARCH_ADDON_PRICE : 0);
-  return promptCount * numImagesPerPrompt * perImage;
+  return promptCount * numImagesPerPrompt * perImage * USD_TO_ILS;
 }
 
 export function parsePrompts(text: string): string[] {

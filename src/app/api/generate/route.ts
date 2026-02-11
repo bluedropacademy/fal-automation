@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { fal } from "@/lib/fal-server";
 import { appendLog } from "@/lib/file-utils";
-import { FAL_MODEL_TEXT_TO_IMAGE, FAL_MODEL_IMAGE_EDIT, PRICING, WEB_SEARCH_ADDON_PRICE } from "@/lib/constants";
+import { FAL_MODEL_TEXT_TO_IMAGE, FAL_MODEL_IMAGE_EDIT, PRICING, WEB_SEARCH_ADDON_PRICE, USD_TO_ILS, MAX_CONCURRENCY } from "@/lib/constants";
 import type { GenerationRequest, GenerationEvent } from "@/types/generation";
 import type { LogEntry } from "@/types/log";
 
@@ -10,6 +10,7 @@ export const maxDuration = 300;
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as GenerationRequest;
   const { batchId, prompts, settings } = body;
+  const concurrency = Math.min(Math.max(settings.concurrency ?? 1, 1), MAX_CONCURRENCY);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -27,10 +28,10 @@ export async function POST(request: NextRequest) {
           ? FAL_MODEL_IMAGE_EDIT
           : FAL_MODEL_TEXT_TO_IMAGE;
 
-      for (let i = 0; i < prompts.length; i++) {
-        // Check if client disconnected
-        if (request.signal.aborted) break;
+      // Shared index counter for worker pool
+      let nextIndex = 0;
 
+      async function processImage(i: number): Promise<void> {
         const fullPrompt = [settings.promptPrefix, prompts[i], settings.promptSuffix]
           .filter(Boolean)
           .join(" ")
@@ -117,7 +118,7 @@ export async function POST(request: NextRequest) {
             width: image.width,
             height: image.height,
             requestId: result.requestId,
-            cost: (PRICING[settings.resolution] ?? 0.15) + (settings.enableWebSearch ? WEB_SEARCH_ADDON_PRICE : 0),
+            cost: ((PRICING[settings.resolution] ?? 0.15) + (settings.enableWebSearch ? WEB_SEARCH_ADDON_PRICE : 0)) * USD_TO_ILS,
           };
           await appendLog(logEntry);
         } catch (error) {
@@ -155,6 +156,23 @@ export async function POST(request: NextRequest) {
           await appendLog(logEntry);
         }
       }
+
+      // Worker pool: each worker grabs the next available index
+      async function worker(): Promise<void> {
+        while (nextIndex < prompts.length) {
+          if (request.signal.aborted) return;
+          const i = nextIndex++;
+          if (i >= prompts.length) return;
+          await processImage(i);
+        }
+      }
+
+      // Launch N workers in parallel
+      const workers = Array.from(
+        { length: Math.min(concurrency, prompts.length) },
+        () => worker()
+      );
+      await Promise.all(workers);
 
       sendEvent({ type: "batch_complete" });
 

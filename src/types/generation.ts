@@ -11,6 +11,7 @@ export interface GenerationSettings {
   promptPrefix: string;
   promptSuffix: string;
   referenceImageUrls: string[];
+  concurrency: number;
 }
 
 export interface GenerationRequest {

@@ -62,8 +62,7 @@ export function ReferenceImages() {
 
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-semibold text-foreground">תמונות רפרנס</h3>
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         הוספת תמונות רפרנס תשתמש ב-endpoint לעריכת תמונות
       </p>
 

@@ -23,7 +23,16 @@ export function formatDuration(ms: number): string {
 }
 
 export function formatCost(cost: number): string {
-  return `$${cost.toFixed(2)}`;
+  return `₪${cost.toFixed(2)}`;
+}
+
+export function formatCostILS(costUSD: number, rate: number): string {
+  return `₪${(costUSD * rate).toFixed(2)}`;
+}
+
+let _uidCounter = 0;
+export function uid(): string {
+  return `${Date.now()}-${++_uidCounter}`;
 }
 
 export function generateBatchId(): string {

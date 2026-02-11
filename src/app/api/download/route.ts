@@ -8,22 +8,25 @@ interface DownloadItem {
   url: string;
   prompt: string;
   outputFormat: string;
+  versionLabel?: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { batchId, images } = (await request.json()) as {
+    const { batchId, batchName, images } = (await request.json()) as {
       batchId: string;
+      batchName?: string;
       images: DownloadItem[];
     };
 
-    const dir = await ensureDownloadDir(batchId);
+    const dir = await ensureDownloadDir(batchId, batchName);
     const total = images.length;
     const results: { index: number; success: boolean; path?: string; error?: string }[] = [];
 
     for (const item of images) {
       const ext = item.outputFormat || "png";
-      const filename = `${padIndex(item.index, total)}-${sanitizeFilename(item.prompt)}.${ext}`;
+      const versionSuffix = item.versionLabel ? `-${item.versionLabel}` : "";
+      const filename = `${padIndex(item.index, total)}-${sanitizeFilename(item.prompt)}${versionSuffix}.${ext}`;
       const filePath = path.join(dir, filename);
 
       try {

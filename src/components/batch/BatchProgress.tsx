@@ -20,45 +20,65 @@ export function BatchProgress() {
     return { total, completed, failed, done, percentage, totalDuration };
   }, [batch]);
 
+  const eta = useMemo(() => {
+    if (!batch || batch.status !== "running" || !stats || stats.completed === 0) return null;
+    const avgDurationMs = stats.totalDuration / stats.completed;
+    const remaining = stats.total - stats.done;
+    const concurrency = batch.settings.concurrency ?? 2;
+    return (remaining / concurrency) * avgDurationMs;
+  }, [batch, stats]);
+
   if (!batch || !stats) return null;
 
-  const statusText = {
+  const statusLabels: Record<string, string> = {
     idle: "",
     running: "מייצר...",
     completed: "הושלם!",
     cancelled: "בוטל",
     error: "שגיאה",
-  }[batch.status];
+    interrupted: "נותק — ניתן להמשיך",
+  };
+
+  const isRunning = batch.status === "running";
+  const barColor =
+    batch.status === "error" || stats.failed === stats.total
+      ? "bg-destructive"
+      : batch.status === "completed"
+        ? "bg-success"
+        : "bg-gradient-to-l from-indigo-500 to-indigo-400";
 
   return (
-    <div className="rounded-md border border-border bg-card p-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium">{statusText}</span>
-        <span className="text-sm text-muted-foreground">
+    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-semibold text-foreground">
+          {statusLabels[batch.status] ?? ""}
+        </span>
+        <span className="text-sm font-medium text-muted-foreground">
           {stats.done}/{stats.total} ({stats.percentage}%)
         </span>
       </div>
 
-      <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+      <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
         <div
-          className={`h-full rounded-full transition-all duration-300 ${
-            batch.status === "error" || stats.failed === stats.total
-              ? "bg-destructive"
-              : batch.status === "completed"
-                ? "bg-success"
-                : "bg-primary"
+          className={`h-full rounded-full transition-all duration-300 ${barColor} ${
+            isRunning ? "progress-bar-animated" : ""
           }`}
           style={{ width: `${stats.percentage}%` }}
         />
       </div>
 
-      <div className="mt-2 flex gap-4 text-xs text-muted-foreground">
+      <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
         <span>{stats.completed} הצליחו</span>
         {stats.failed > 0 && (
           <span className="text-destructive">{stats.failed} נכשלו</span>
         )}
         {stats.totalDuration > 0 && (
           <span>זמן: {formatDuration(stats.totalDuration)}</span>
+        )}
+        {eta !== null && (
+          <span className="font-medium text-foreground">
+            ~{formatDuration(eta)} נותרו
+          </span>
         )}
       </div>
     </div>

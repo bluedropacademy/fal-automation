@@ -1,5 +1,7 @@
 "use client";
 
+import { X } from "lucide-react";
+
 interface ConfirmDialogProps {
   open: boolean;
   title: string;
@@ -22,20 +24,26 @@ export function ConfirmDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="animate-modal-in w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl relative">
+        <button
+          onClick={onCancel}
+          className="absolute top-4 left-4 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
         <h3 className="text-lg font-semibold">{title}</h3>
         <p className="mt-2 text-sm text-muted-foreground">{message}</p>
-        <div className="mt-4 flex gap-2 justify-start">
+        <div className="mt-5 flex gap-3 justify-start">
           <button
             onClick={onConfirm}
-            className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-red-600"
+            className="rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-red-600 transition-colors"
           >
             {confirmLabel}
           </button>
           <button
             onClick={onCancel}
-            className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
           >
             {cancelLabel}
           </button>
