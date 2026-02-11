@@ -72,34 +72,85 @@ export class KieProvider implements ImageProvider {
     }
 
     const taskId = createData.data.taskId as string;
+    console.log(`[Kie] Task created: ${taskId} for model ${model}`);
     onStatusUpdate?.("queued");
+
+    let consecutiveErrors = 0;
 
     for (let attempt = 0; attempt < KIE_MAX_POLL_ATTEMPTS; attempt++) {
       await sleep(KIE_POLL_INTERVAL_MS);
 
-      const pollRes = await fetch(
-        `${KIE_API_BASE}/recordInfo?taskId=${encodeURIComponent(taskId)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${getKieKey()}`,
-          },
+      let pollRes: Response;
+      try {
+        pollRes = await fetch(
+          `${KIE_API_BASE}/recordInfo?taskId=${encodeURIComponent(taskId)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${getKieKey()}`,
+            },
+          }
+        );
+      } catch (fetchErr) {
+        consecutiveErrors++;
+        console.warn(`[Kie] Poll fetch error for ${taskId} (attempt ${attempt}):`, fetchErr);
+        if (consecutiveErrors >= 5) {
+          throw new Error(`Kie AI polling failed: 5 consecutive network errors for task ${taskId}`);
         }
-      );
+        continue;
+      }
 
-      if (!pollRes.ok) continue;
+      if (!pollRes.ok) {
+        consecutiveErrors++;
+        console.warn(`[Kie] Poll HTTP ${pollRes.status} for ${taskId} (attempt ${attempt})`);
+        if (consecutiveErrors >= 5) {
+          throw new Error(`Kie AI polling failed: 5 consecutive HTTP errors (last: ${pollRes.status})`);
+        }
+        continue;
+      }
 
+      consecutiveErrors = 0;
       const pollData = await pollRes.json();
       const state = pollData.data?.state as string | undefined;
 
       if (state === "generating") {
         onStatusUpdate?.("processing");
       } else if (state === "success") {
-        const resultJson = JSON.parse(pollData.data.resultJson as string);
-        const urls: string[] = resultJson.resultUrls ?? [];
+        // resultJson can be either a JSON string or an already-parsed object
+        let resultData: Record<string, unknown>;
+        const raw = pollData.data.resultJson;
+        if (typeof raw === "string") {
+          try {
+            resultData = JSON.parse(raw);
+          } catch {
+            console.error(`[Kie] Failed to parse resultJson string for ${taskId}:`, raw);
+            throw new Error(`Kie AI returned invalid resultJson for task ${taskId}`);
+          }
+        } else if (raw && typeof raw === "object") {
+          resultData = raw as Record<string, unknown>;
+        } else {
+          console.error(`[Kie] Unexpected resultJson type for ${taskId}:`, typeof raw, raw);
+          throw new Error(`Kie AI returned unexpected resultJson type: ${typeof raw}`);
+        }
+
+        // Try multiple possible field names for the result URLs
+        const urls: string[] =
+          (resultData.resultUrls as string[]) ??
+          (resultData.result_urls as string[]) ??
+          (resultData.urls as string[]) ??
+          (resultData.images as string[]) ??
+          [];
+
+        // If resultData has an image/url field directly (single result)
+        if (urls.length === 0 && typeof resultData.url === "string") {
+          urls.push(resultData.url as string);
+        }
 
         if (urls.length === 0) {
-          throw new Error("Kie AI returned success but no result URLs");
+          console.error(`[Kie] No result URLs found in resultJson for ${taskId}:`, JSON.stringify(resultData));
+          throw new Error(`Kie AI returned success but no result URLs. Keys: ${Object.keys(resultData).join(", ")}`);
         }
+
+        console.log(`[Kie] Task ${taskId} completed with ${urls.length} image(s)`);
 
         return {
           images: urls.map((url) => ({
@@ -115,6 +166,7 @@ export class KieProvider implements ImageProvider {
           `Kie AI task failed: ${pollData.data.failMsg ?? "Unknown error"} (code: ${pollData.data.failCode})`
         );
       }
+      // "waiting" or "queuing" — keep polling
     }
 
     throw new Error(

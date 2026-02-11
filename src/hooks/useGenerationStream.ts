@@ -189,11 +189,28 @@ export function useGenerationStream() {
 
         const reader = response.body!.getReader();
         await processSSEStream(reader, dispatch);
+
+        // Stream ended — check if batch_complete was received.
+        // If not (e.g. Vercel function timeout), mark as interrupted so it can be resumed.
+        setTimeout(() => {
+          const currentStatus = state.currentBatch?.status;
+          if (currentStatus === "running") {
+            dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
+            toast.warning("החיבור לשרת נותק", {
+              description: "חלק מהתמונות הושלמו. ניתן להמשיך את הבאצ׳.",
+              duration: 10000,
+            });
+          }
+        }, 100);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           dispatch({ type: "SET_BATCH_STATUS", status: "cancelled" });
         } else {
-          dispatch({ type: "SET_BATCH_STATUS", status: "error" });
+          dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
+          toast.warning("החיבור לשרת נותק", {
+            description: error instanceof Error ? error.message : "שגיאה לא ידועה",
+            duration: 10000,
+          });
         }
       } finally {
         abortControllerRef.current = null;
@@ -256,11 +273,26 @@ export function useGenerationStream() {
 
       const reader = response.body!.getReader();
       await processSSEStream(reader, dispatch, indexMap);
+
+      // Stream ended — check if batch_complete was received
+      setTimeout(() => {
+        if (batch.status === "running") {
+          dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
+          toast.warning("החיבור לשרת נותק", {
+            description: "חלק מהתמונות הושלמו. ניתן להמשיך את הבאצ׳.",
+            duration: 10000,
+          });
+        }
+      }, 100);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         dispatch({ type: "SET_BATCH_STATUS", status: "cancelled" });
       } else {
-        dispatch({ type: "SET_BATCH_STATUS", status: "error" });
+        dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
+        toast.warning("החיבור לשרת נותק", {
+          description: error instanceof Error ? error.message : "שגיאה לא ידועה",
+          duration: 10000,
+        });
       }
     } finally {
       abortControllerRef.current = null;

@@ -243,11 +243,11 @@ export function BatchProvider({ children }: { children: ReactNode }) {
     saveSettings(state.settings);
   }, [state.settings, hydrated]);
 
-  // Archive completed/cancelled batches to history
+  // Archive finished batches to history (completed, cancelled, error, interrupted)
   useEffect(() => {
     if (!hydrated || !state.currentBatch) return;
     const status = state.currentBatch.status;
-    if (status === "completed" || status === "cancelled") {
+    if (status === "completed" || status === "cancelled" || status === "error" || status === "interrupted") {
       archiveBatch(state.currentBatch);
     }
   }, [state.currentBatch?.status, hydrated]);
