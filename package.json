@@ -1,5 +1,5 @@
 {
-  "name": "fal-automation-temp",
+  "name": "fal-automation",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,9 +9,13 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@fal-ai/client": "^1.9.0",
+    "@fal-ai/server-proxy": "^1.2.0",
+    "lucide-react": "^0.563.0",
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "sonner": "^2.0.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

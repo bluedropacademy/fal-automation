@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir /s /b)",
+      "Bash(powershell -Command \"Get-ChildItem -Recurse -Force | Select-Object FullName | Sort-Object FullName\")",
+      "WebFetch(domain:docs.fal.ai)",
+      "Bash(powershell -Command:*)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(node --version:*)",
+      "Bash(npm --version:*)",
+      "Bash(npx:*)",
+      "Bash(npm install:*)",
+      "Bash(dir:*)",
+      "Bash(timeout:*)",
+      "WebFetch(domain:localhost)",
+      "Bash(git add:*)"
+    ]
+  }
+}
