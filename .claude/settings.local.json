@@ -18,7 +18,17 @@
       "WebFetch(domain:gist.github.com)",
       "WebFetch(domain:api.fal.ai)",
       "Bash(where:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(npm uninstall:*)",
+      "WebFetch(domain:kie.ai)",
+      "WebFetch(domain:docs.kie.ai)",
+      "WebFetch(domain:aijourn.com)",
+      "WebFetch(domain:plainenglish.io)",
+      "Bash(npm run build:*)",
+      "Bash(findstr:*)",
+      "Bash(gh auth:*)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)"
     ]
   }
 }
