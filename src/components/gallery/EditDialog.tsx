@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { X, Pencil, Copy, Layers, Loader2 } from "lucide-react";
+import { X, Pencil, Copy, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { useBatch } from "@/hooks/useBatch";
 import { uid, proxyImageUrl } from "@/lib/format-utils";
@@ -41,7 +41,6 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
   const [editMode, setEditMode] = useState<EditMode>("replace");
   const [prompt, setPrompt] = useState("");
   const [variableValues, setVariableValues] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const imageUrl = image.result?.url;
   if (!imageUrl) return null;
@@ -95,57 +94,56 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
     }
   };
 
-  const fireReplaceEdit = async () => {
+  const fireReplaceEdit = () => {
     const capturedPrompt = prompt.trim();
     const capturedIndex = image.index;
     const versionNum = getNextVersionNumber();
 
-    setIsSubmitting(true);
+    // Close dialog immediately — edit runs in background
     dispatch({ type: "UPDATE_IMAGE", index: capturedIndex, update: { status: "editing" } });
+    onClose();
 
-    try {
-      const res = await fetch("/api/edit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildRequestBody(capturedPrompt)),
+    fetch("/api/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildRequestBody(capturedPrompt)),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Edit failed");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        const newVersion: ImageVersion = {
+          versionNumber: versionNum,
+          url: data.image.url,
+          contentType: data.image.contentType,
+          width: data.image.width,
+          height: data.image.height,
+          editPrompt: capturedPrompt,
+          createdAt: new Date().toISOString(),
+        };
+
+        dispatch({
+          type: "REPLACE_IMAGE_VERSION",
+          index: capturedIndex,
+          newVersion,
+          newResult: data.image,
+        });
+
+        // Force immediate save — don't rely on debounce for version data
+        requestAnimationFrame(() => flushSave());
+
+        toast.success(`עריכה הושלמה — V${versionNum}`);
+      })
+      .catch((error) => {
+        dispatch({ type: "UPDATE_IMAGE", index: capturedIndex, update: { status: "completed" } });
+        toast.error("שגיאה בעריכה", {
+          description: error instanceof Error ? error.message : "שגיאה לא ידועה",
+        });
       });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Edit failed");
-      }
-
-      const data = await res.json();
-
-      const newVersion: ImageVersion = {
-        versionNumber: versionNum,
-        url: data.image.url,
-        contentType: data.image.contentType,
-        width: data.image.width,
-        height: data.image.height,
-        editPrompt: capturedPrompt,
-        createdAt: new Date().toISOString(),
-      };
-
-      dispatch({
-        type: "REPLACE_IMAGE_VERSION",
-        index: capturedIndex,
-        newVersion,
-        newResult: data.image,
-      });
-
-      // Force immediate save — don't rely on debounce for version data
-      requestAnimationFrame(() => flushSave());
-
-      toast.success(`עריכה הושלמה — V${versionNum}`);
-      onClose();
-    } catch (error) {
-      dispatch({ type: "UPDATE_IMAGE", index: capturedIndex, update: { status: "completed" } });
-      toast.error("שגיאה בעריכה", {
-        description: error instanceof Error ? error.message : "שגיאה לא ידועה",
-      });
-      setIsSubmitting(false);
-    }
   };
 
   const fireDuplicateEdit = () => {
@@ -303,7 +301,7 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={isSubmitting ? undefined : onClose}
+      onClick={onClose}
     >
       <div
         className="animate-modal-in relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
@@ -314,8 +312,7 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
           <h3 className="text-lg font-bold text-foreground">עריכת תמונה</h3>
           <button
             onClick={onClose}
-            disabled={isSubmitting}
-            className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+            className="text-muted-foreground hover:text-foreground"
           >
             <X className="h-5 w-5" />
           </button>
@@ -413,26 +410,19 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
         <div className="flex gap-2">
           <button
             onClick={handleSubmit}
-            disabled={!prompt.trim() || isSubmitting}
+            disabled={!prompt.trim()}
             className="flex-1 flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
-            {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Pencil className="h-4 w-4" />
-            )}
-            {isSubmitting
-              ? "מעבד עריכה..."
-              : editMode === "parallel"
-                ? `ערוך ${variableValues.split("\n").filter((v) => v.trim()).length} וריאציות`
-                : editMode === "replace"
-                  ? "ערוך והחלף"
-                  : "ערוך ושכפל"}
+            <Pencil className="h-4 w-4" />
+            {editMode === "parallel"
+              ? `ערוך ${variableValues.split("\n").filter((v) => v.trim()).length} וריאציות`
+              : editMode === "replace"
+                ? "ערוך והחלף"
+                : "ערוך ושכפל"}
           </button>
           <button
             onClick={onClose}
-            disabled={isSubmitting}
-            className="rounded-md border border-border px-4 py-2.5 text-sm font-medium hover:bg-muted disabled:opacity-50 transition-colors"
+            className="rounded-md border border-border px-4 py-2.5 text-sm font-medium hover:bg-muted transition-colors"
           >
             ביטול
           </button>
