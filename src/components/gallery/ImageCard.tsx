@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { formatDuration } from "@/lib/format-utils";
+import { formatDuration, proxyImageUrl } from "@/lib/format-utils";
 import type { BatchImage } from "@/types/batch";
 import { Loader2, Pencil, AlertCircle, Check } from "lucide-react";
 
@@ -39,7 +39,7 @@ export function ImageCard({ image, onClick, onEdit, selectable, selected, onTogg
               <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-muted via-muted-foreground/10 to-muted" />
             )}
             <img
-              src={image.result.url}
+              src={proxyImageUrl(image.result.url)}
               alt={image.rawPrompt}
               loading="lazy"
               className={`h-full w-full object-cover transition-all duration-300 group-hover:scale-105 ${

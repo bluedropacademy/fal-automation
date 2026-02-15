@@ -30,6 +30,10 @@ export function formatCostILS(costUSD: number, rate: number): string {
   return `₪${(costUSD * rate).toFixed(2)}`;
 }
 
+export function proxyImageUrl(url: string): string {
+  return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+}
+
 let _uidCounter = 0;
 export function uid(): string {
   return `${Date.now()}-${++_uidCounter}`;

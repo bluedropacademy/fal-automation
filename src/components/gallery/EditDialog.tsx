@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { X, Loader2, Pencil, Copy, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { useBatch } from "@/hooks/useBatch";
-import { uid } from "@/lib/format-utils";
+import { uid, proxyImageUrl } from "@/lib/format-utils";
 import type { BatchImage, EditMode, ImageVersion } from "@/types/batch";
 
 interface EditDialogProps {
@@ -273,7 +273,7 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
         {/* Preview */}
         <div className="mb-4 flex justify-center">
           <img
-            src={imageUrl}
+            src={proxyImageUrl(imageUrl)}
             alt={image.rawPrompt}
             className="max-h-40 rounded-lg object-contain border border-border"
           />

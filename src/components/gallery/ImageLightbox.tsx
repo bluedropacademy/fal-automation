@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useState } from "react";
 import { X, ChevronRight, ChevronLeft, Download, Pencil, Loader2 } from "lucide-react";
-import { formatDuration } from "@/lib/format-utils";
+import { formatDuration, proxyImageUrl } from "@/lib/format-utils";
 import { useBatch } from "@/hooks/useBatch";
 import type { BatchImage } from "@/types/batch";
 
@@ -90,7 +90,7 @@ export function ImageLightbox({
             </div>
           )}
           <img
-            src={image.result.url}
+            src={proxyImageUrl(image.result.url)}
             alt={image.rawPrompt}
             className={`max-h-[75vh] max-w-full rounded-lg object-contain transition-opacity duration-200 ${
               lightboxLoaded ? "opacity-100" : "opacity-0"
