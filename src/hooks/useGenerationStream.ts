@@ -10,14 +10,19 @@ import { toast } from "sonner";
 import { useWakeLock } from "./useWakeLock";
 import { useSleepDetector } from "./useSleepDetector";
 
+/**
+ * Process SSE stream from /api/generate.
+ * Returns true if a batch_complete event was received (clean finish).
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function processSSEStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   dispatch: (action: any) => void,
   indexMap?: Map<number, number>
-) {
+): Promise<boolean> {
   const decoder = new TextDecoder();
   let buffer = "";
+  let receivedBatchComplete = false;
 
   return (async () => {
     while (true) {
@@ -53,12 +58,14 @@ function processSSEStream(
             },
           });
         } else if (event.type === "batch_complete") {
+          receivedBatchComplete = true;
           dispatch({ type: "SET_BATCH_STATUS", status: "completed" });
         } else if (event.type === "batch_error") {
           dispatch({ type: "SET_BATCH_STATUS", status: "error" });
         }
       }
     }
+    return receivedBatchComplete;
   })();
 }
 
@@ -70,59 +77,89 @@ export function useGenerationStream() {
   // Prevent sleep during active generation
   useWakeLock(isRunning ?? false);
 
+  /**
+   * Reconcile client state with server logs.
+   * Catches images that completed/failed on the server but whose SSE events were lost.
+   * Returns "completed" if all images are done, "interrupted" otherwise.
+   */
+  const reconcileWithServer = useCallback(
+    async (batch: Batch): Promise<"completed" | "interrupted"> => {
+      try {
+        const dateStr = batch.createdAt.slice(0, 10);
+        const res = await fetch(
+          `/api/batch-status?batchId=${batch.id}&date=${dateStr}`
+        );
+        const data = await res.json();
+
+        // Update images that completed on server but client doesn't know about
+        for (const completed of data.completedIndices) {
+          const img = batch.images[completed.index];
+          if (img && img.status !== "completed") {
+            dispatch({
+              type: "UPDATE_IMAGE",
+              index: completed.index,
+              update: {
+                status: "completed" as const,
+                result: {
+                  url: completed.url,
+                  width: completed.width,
+                  height: completed.height,
+                  contentType: `image/${batch.settings.outputFormat}`,
+                },
+                completedAt: new Date().toISOString(),
+              },
+            });
+          }
+        }
+
+        // Update images that failed on server but client shows as still pending/processing
+        for (const failed of data.failedIndices) {
+          const failedIndex = typeof failed === "number" ? failed : failed.index;
+          const failedError = typeof failed === "number" ? "נכשל בצד השרת" : (failed.error ?? "נכשל בצד השרת");
+          const img = batch.images[failedIndex];
+          if (img && img.status !== "completed" && img.status !== "failed") {
+            dispatch({
+              type: "UPDATE_IMAGE",
+              index: failedIndex,
+              update: {
+                status: "failed" as const,
+                error: failedError,
+                completedAt: new Date().toISOString(),
+              },
+            });
+          }
+        }
+
+        const totalProcessed = data.completedIndices.length + data.failedIndices.length;
+        if (totalProcessed >= batch.images.length) {
+          dispatch({ type: "SET_BATCH_STATUS", status: "completed" });
+          return "completed";
+        } else {
+          dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
+          return "interrupted";
+        }
+      } catch {
+        dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
+        return "interrupted";
+      }
+    },
+    [dispatch]
+  );
+
   // Detect sleep/wake and reconcile state
   const handleSleepDetected = useCallback(async () => {
     if (!state.currentBatch || state.currentBatch.status !== "running") return;
 
-    // The SSE connection may be broken after sleep. Reconcile with server logs.
-    try {
-      const dateStr = state.currentBatch.createdAt.slice(0, 10);
-      const res = await fetch(
-        `/api/batch-status?batchId=${state.currentBatch.id}&date=${dateStr}`
-      );
-      const data = await res.json();
-
-      // Update images that completed while we were asleep
-      for (const completed of data.completedIndices) {
-        const img = state.currentBatch.images[completed.index];
-        if (img && img.status !== "completed") {
-          dispatch({
-            type: "UPDATE_IMAGE",
-            index: completed.index,
-            update: {
-              status: "completed" as const,
-              result: {
-                url: completed.url,
-                width: completed.width,
-                height: completed.height,
-                contentType: `image/${state.currentBatch.settings.outputFormat}`,
-              },
-              completedAt: new Date().toISOString(),
-            },
-          });
-        }
-      }
-
-      const totalProcessed = data.completedIndices.length + data.failedIndices.length;
-      if (totalProcessed >= state.currentBatch.images.length) {
-        dispatch({ type: "SET_BATCH_STATUS", status: "completed" });
-        toast.info("הבאצ׳ הושלם בזמן שהמחשב ישן", {
-          description: `${data.completedIndices.length} תמונות הושלמו`,
-        });
-      } else {
-        dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
-        toast.warning("החיבור נותק (מצב שינה?)", {
-          description: `${totalProcessed}/${state.currentBatch.images.length} תמונות עובדו. ניתן להמשיך את הבאצ׳.`,
-          duration: 10000,
-        });
-      }
-    } catch {
-      dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
-      toast.error("החיבור לשרת נותק", {
-        description: "ניתן לנסות להמשיך את הבאצ׳",
+    const result = await reconcileWithServer(state.currentBatch);
+    if (result === "completed") {
+      toast.info("הבאצ׳ הושלם בזמן שהמחשב ישן");
+    } else {
+      toast.warning("החיבור נותק (מצב שינה?)", {
+        description: "ניתן להמשיך את הבאצ׳.",
+        duration: 10000,
       });
     }
-  }, [state.currentBatch, dispatch]);
+  }, [state.currentBatch, reconcileWithServer]);
 
   useSleepDetector({
     onSleepDetected: handleSleepDetected,
@@ -188,25 +225,27 @@ export function useGenerationStream() {
         }
 
         const reader = response.body!.getReader();
-        await processSSEStream(reader, dispatch);
+        const batchComplete = await processSSEStream(reader, dispatch);
 
-        // Stream ended — check if batch_complete was received.
-        // If not (e.g. Vercel function timeout), mark as interrupted so it can be resumed.
-        setTimeout(() => {
-          const currentStatus = state.currentBatch?.status;
-          if (currentStatus === "running") {
-            dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
+        // Stream ended without batch_complete → reconcile with server logs
+        if (!batchComplete) {
+          const result = await reconcileWithServer(batch);
+          if (result === "interrupted") {
             toast.warning("החיבור לשרת נותק", {
               description: "חלק מהתמונות הושלמו. ניתן להמשיך את הבאצ׳.",
               duration: 10000,
             });
           }
-        }, 100);
+        }
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
-          dispatch({ type: "SET_BATCH_STATUS", status: "cancelled" });
-        } else {
+          // User paused — set interrupted so they can resume
           dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
+          // Reconcile to catch any in-flight completions
+          await reconcileWithServer(batch);
+        } else {
+          // Connection error — reconcile and mark interrupted
+          await reconcileWithServer(batch);
           toast.warning("החיבור לשרת נותק", {
             description: error instanceof Error ? error.message : "שגיאה לא ידועה",
             duration: 10000,
@@ -216,10 +255,10 @@ export function useGenerationStream() {
         abortControllerRef.current = null;
       }
     },
-    [state, dispatch]
+    [state, dispatch, reconcileWithServer]
   );
 
-  const cancelGeneration = useCallback(() => {
+  const pauseGeneration = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -230,20 +269,38 @@ export function useGenerationStream() {
     if (!state.currentBatch) return;
 
     const batch = state.currentBatch;
-    const pendingImages = batch.images.filter(
-      (img) => img.status === "pending" || img.status === "queued"
+
+    // Include failed images in resume (retry)
+    const retryableImages = batch.images.filter(
+      (img) => img.status === "pending" || img.status === "queued" || img.status === "failed"
     );
 
-    if (pendingImages.length === 0) {
+    if (retryableImages.length === 0) {
       dispatch({ type: "SET_BATCH_STATUS", status: "completed" });
       toast.info("כל התמונות כבר עובדו");
       return;
     }
 
+    // Reset failed images to pending before retrying
+    for (const img of retryableImages) {
+      if (img.status === "failed") {
+        dispatch({
+          type: "UPDATE_IMAGE",
+          index: img.index,
+          update: {
+            status: "pending" as const,
+            error: undefined,
+            completedAt: undefined,
+            durationMs: undefined,
+          },
+        });
+      }
+    }
+
     // Map from new sequential indices (0,1,2...) to actual batch indices
     const indexMap = new Map<number, number>();
     const pendingPrompts: string[] = [];
-    pendingImages.forEach((img, seqIdx) => {
+    retryableImages.forEach((img, seqIdx) => {
       indexMap.set(seqIdx, img.index);
       pendingPrompts.push(img.rawPrompt);
     });
@@ -272,23 +329,24 @@ export function useGenerationStream() {
       }
 
       const reader = response.body!.getReader();
-      await processSSEStream(reader, dispatch, indexMap);
+      const batchComplete = await processSSEStream(reader, dispatch, indexMap);
 
-      // Stream ended — check if batch_complete was received
-      setTimeout(() => {
-        if (batch.status === "running") {
-          dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
+      // Stream ended without batch_complete → reconcile
+      if (!batchComplete) {
+        const result = await reconcileWithServer(batch);
+        if (result === "interrupted") {
           toast.warning("החיבור לשרת נותק", {
             description: "חלק מהתמונות הושלמו. ניתן להמשיך את הבאצ׳.",
             duration: 10000,
           });
         }
-      }, 100);
+      }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
-        dispatch({ type: "SET_BATCH_STATUS", status: "cancelled" });
-      } else {
         dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
+        await reconcileWithServer(batch);
+      } else {
+        await reconcileWithServer(batch);
         toast.warning("החיבור לשרת נותק", {
           description: error instanceof Error ? error.message : "שגיאה לא ידועה",
           duration: 10000,
@@ -297,7 +355,7 @@ export function useGenerationStream() {
     } finally {
       abortControllerRef.current = null;
     }
-  }, [state.currentBatch, dispatch]);
+  }, [state.currentBatch, dispatch, reconcileWithServer]);
 
-  return { startGeneration, cancelGeneration, resumeGeneration };
+  return { startGeneration, pauseGeneration, resumeGeneration };
 }

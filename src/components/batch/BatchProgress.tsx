@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { AlertCircle, ChevronDown } from "lucide-react";
 import { useBatch } from "@/hooks/useBatch";
 import { formatDuration } from "@/lib/format-utils";
 
 export function BatchProgress() {
   const { state } = useBatch();
   const batch = state.currentBatch;
+  const [showErrors, setShowErrors] = useState(false);
 
   const stats = useMemo(() => {
     if (!batch) return null;
@@ -17,7 +19,19 @@ export function BatchProgress() {
     const percentage = total > 0 ? Math.round((done / total) * 100) : 0;
     const totalDuration = batch.images.reduce((sum, img) => sum + (img.durationMs || 0), 0);
 
-    return { total, completed, failed, done, percentage, totalDuration };
+    // Collect unique error messages with counts
+    const errorMap = new Map<string, number>();
+    batch.images.forEach((img) => {
+      if (img.status === "failed" && img.error) {
+        errorMap.set(img.error, (errorMap.get(img.error) ?? 0) + 1);
+      }
+    });
+    const errors = Array.from(errorMap.entries()).map(([message, count]) => ({
+      message,
+      count,
+    }));
+
+    return { total, completed, failed, done, percentage, totalDuration, errors };
   }, [batch]);
 
   const eta = useMemo(() => {
@@ -36,7 +50,7 @@ export function BatchProgress() {
     completed: "הושלם!",
     cancelled: "בוטל",
     error: "שגיאה",
-    interrupted: "נותק — ניתן להמשיך",
+    interrupted: "הושהה — ניתן להמשיך",
   };
 
   const isRunning = batch.status === "running";
@@ -81,6 +95,33 @@ export function BatchProgress() {
           </span>
         )}
       </div>
+
+      {/* Error details panel */}
+      {stats.failed > 0 && stats.errors.length > 0 && (
+        <div className="mt-3 rounded-lg bg-red-50 border border-red-200 p-3">
+          <button
+            onClick={() => setShowErrors(!showErrors)}
+            className="flex items-center gap-2 text-xs font-medium text-destructive w-full"
+          >
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span>{stats.failed} תמונות נכשלו — לחץ לפרטים</span>
+            <ChevronDown className={`h-3 w-3 mr-auto transition-transform ${showErrors ? "rotate-180" : ""}`} />
+          </button>
+          {showErrors && (
+            <ul className="mt-2 space-y-1">
+              {stats.errors.map((err, i) => (
+                <li key={i} className="text-xs text-red-700 flex items-start gap-1.5">
+                  <span className="text-red-400 mt-0.5 shrink-0">&#x2022;</span>
+                  <span className="flex-1 break-words" dir="ltr">{err.message}</span>
+                  {err.count > 1 && (
+                    <span className="text-red-400 whitespace-nowrap shrink-0">({err.count}x)</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }

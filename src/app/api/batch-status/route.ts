@@ -24,7 +24,10 @@ export async function GET(request: NextRequest) {
         })),
       failedIndices: logs
         .filter((l) => l.status === "failed")
-        .map((l) => l.imageIndex),
+        .map((l) => ({
+          index: l.imageIndex,
+          error: l.error ?? "Unknown error",
+        })),
       totalLogged: logs.length,
     });
   } catch {

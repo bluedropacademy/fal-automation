@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
-import { Play, Square, RotateCcw, Plus, FolderOpen } from "lucide-react";
+import { Play, Pause, RotateCcw, Plus, FolderOpen, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useBatch } from "@/hooks/useBatch";
 import { useGenerationStream } from "@/hooks/useGenerationStream";
@@ -9,7 +9,7 @@ import { parsePrompts } from "@/lib/constants";
 
 export function BatchControls() {
   const { state, dispatch } = useBatch();
-  const { startGeneration, cancelGeneration, resumeGeneration } = useGenerationStream();
+  const { startGeneration, pauseGeneration, resumeGeneration } = useGenerationStream();
   const isRunning = state.currentBatch?.status === "running";
   const isInterrupted = state.currentBatch?.status === "interrupted";
   const isFinished =
@@ -18,6 +18,10 @@ export function BatchControls() {
     state.currentBatch?.status === "error";
   const rawText = state.prompts.join("\n");
   const validPrompts = parsePrompts(rawText);
+
+  const failedCount = state.currentBatch?.images.filter(
+    (img) => img.status === "failed"
+  ).length ?? 0;
 
   const handleStart = useCallback(async () => {
     if (validPrompts.length === 0) {
@@ -29,12 +33,12 @@ export function BatchControls() {
     await startGeneration(validPrompts);
   }, [validPrompts, startGeneration]);
 
-  const handleCancel = useCallback(() => {
-    cancelGeneration();
-    toast.info("הבאצ׳ בוטל", {
-      description: "תמונות שכבר נוצרו נשמרו",
+  const handlePause = useCallback(() => {
+    pauseGeneration();
+    toast.info("הבאצ׳ הושהה", {
+      description: "ניתן להמשיך בכל עת. תמונות שכבר נוצרו נשמרו.",
     });
-  }, [cancelGeneration]);
+  }, [pauseGeneration]);
 
   const handleResume = useCallback(async () => {
     await resumeGeneration();
@@ -77,11 +81,11 @@ export function BatchControls() {
 
       {isRunning ? (
         <button
-          onClick={handleCancel}
-          className="mt-5 flex items-center gap-2 rounded-lg border-2 border-destructive px-6 py-2.5 text-sm font-bold text-destructive hover:bg-destructive hover:text-white transition-all"
+          onClick={handlePause}
+          className="mt-5 flex items-center gap-2 rounded-lg border-2 border-amber-500 px-6 py-2.5 text-sm font-bold text-amber-600 hover:bg-amber-500 hover:text-white transition-all"
         >
-          <Square className="h-4 w-4" />
-          ביטול
+          <Pause className="h-4 w-4" />
+          השהה
         </button>
       ) : isInterrupted ? (
         <>
@@ -91,6 +95,7 @@ export function BatchControls() {
           >
             <RotateCcw className="h-4 w-4" />
             המשך באצ׳
+            {failedCount > 0 && ` (+ ${failedCount} נכשלו)`}
           </button>
           <button
             onClick={handleNewBatch}
@@ -113,6 +118,15 @@ export function BatchControls() {
               Ctrl+Enter
             </kbd>
           </button>
+          {isFinished && failedCount > 0 && (
+            <button
+              onClick={handleResume}
+              className="mt-5 flex items-center gap-2 rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-amber-600 shadow-md transition-all"
+            >
+              <RefreshCw className="h-4 w-4" />
+              נסה שוב ({failedCount} נכשלו)
+            </button>
+          )}
           {isFinished && (
             <button
               onClick={handleNewBatch}
