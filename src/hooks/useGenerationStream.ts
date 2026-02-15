@@ -270,9 +270,16 @@ export function useGenerationStream() {
 
     const batch = state.currentBatch;
 
-    // Include failed images in resume (retry)
-    const retryableImages = batch.images.filter(
-      (img) => img.status === "pending" || img.status === "queued" || img.status === "failed"
+    // First reconcile with server to catch any images that completed but we missed
+    await reconcileWithServer(batch);
+
+    // Re-read batch state after reconciliation (use fresh reference)
+    const freshBatch = state.currentBatch;
+    if (!freshBatch) return;
+
+    // Include failed, pending, queued, and stuck processing images in resume
+    const retryableImages = freshBatch.images.filter(
+      (img) => img.status === "pending" || img.status === "queued" || img.status === "failed" || img.status === "processing"
     );
 
     if (retryableImages.length === 0) {
@@ -281,9 +288,9 @@ export function useGenerationStream() {
       return;
     }
 
-    // Reset failed images to pending before retrying
+    // Reset failed/stuck images to pending before retrying
     for (const img of retryableImages) {
-      if (img.status === "failed") {
+      if (img.status === "failed" || img.status === "processing") {
         dispatch({
           type: "UPDATE_IMAGE",
           index: img.index,

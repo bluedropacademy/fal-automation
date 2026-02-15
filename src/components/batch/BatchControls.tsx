@@ -19,8 +19,8 @@ export function BatchControls() {
   const rawText = state.prompts.join("\n");
   const validPrompts = parsePrompts(rawText);
 
-  const failedCount = state.currentBatch?.images.filter(
-    (img) => img.status === "failed"
+  const stuckOrFailedCount = state.currentBatch?.images.filter(
+    (img) => img.status === "failed" || img.status === "processing" || img.status === "queued" || img.status === "pending"
   ).length ?? 0;
 
   const handleStart = useCallback(async () => {
@@ -94,8 +94,7 @@ export function BatchControls() {
             className="mt-5 flex items-center gap-2 rounded-lg bg-amber-500 px-6 py-2.5 text-sm font-bold text-white hover:bg-amber-600 shadow-md transition-all"
           >
             <RotateCcw className="h-4 w-4" />
-            המשך באצ׳
-            {failedCount > 0 && ` (+ ${failedCount} נכשלו)`}
+            המשך באצ׳ ({stuckOrFailedCount} לא הושלמו)
           </button>
           <button
             onClick={handleNewBatch}
@@ -118,13 +117,13 @@ export function BatchControls() {
               Ctrl+Enter
             </kbd>
           </button>
-          {isFinished && failedCount > 0 && (
+          {isFinished && stuckOrFailedCount > 0 && (
             <button
               onClick={handleResume}
               className="mt-5 flex items-center gap-2 rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-bold text-white hover:bg-amber-600 shadow-md transition-all"
             >
               <RefreshCw className="h-4 w-4" />
-              נסה שוב ({failedCount} נכשלו)
+              נסה שוב ({stuckOrFailedCount} לא הושלמו)
             </button>
           )}
           {isFinished && (
