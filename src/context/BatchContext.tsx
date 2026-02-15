@@ -50,7 +50,7 @@ function batchReducer(state: BatchState, action: BatchAction): BatchState {
       return { ...state, settings: { ...state.settings, ...action.settings } };
 
     case "LOAD_SETTINGS":
-      return { ...state, settings: action.settings };
+      return { ...state, settings: { ...DEFAULT_SETTINGS, ...action.settings } };
 
     case "START_BATCH":
       return { ...state, currentBatch: action.batch };

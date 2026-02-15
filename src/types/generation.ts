@@ -15,6 +15,7 @@ export interface GenerationSettings {
   promptSuffix: string;
   referenceImageUrls: string[];
   concurrency: number;
+  geminiSystemPrompt: string;
 }
 
 export interface GenerationRequest {

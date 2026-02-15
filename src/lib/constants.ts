@@ -41,6 +41,40 @@ export const KIE_MAX_POLL_ATTEMPTS = 150;
 
 export const MAX_CONCURRENCY = 4;
 
+// Gemini Vision config
+export const GEMINI_MODEL = "gemini-2.0-flash";
+
+export const DEFAULT_GEMINI_SYSTEM_PROMPT = `You are an expert at analyzing images and generating detailed video motion prompts. Given an image, describe a compelling 6-10 second video scene that brings this image to life. Focus on:
+- Camera movement (pan, zoom, dolly, orbit)
+- Subject motion and animation
+- Atmospheric effects (lighting changes, particles, wind)
+- Emotional tone and cinematic style
+
+Output ONLY the English video prompt, no explanations or formatting. Keep it concise (2-4 sentences).`;
+
+export const GEMINI_PROMPT_PRESETS: Array<{ name: string; label: string; prompt: string }> = [
+  {
+    name: "cinematic",
+    label: "קולנועי",
+    prompt: `Analyze the image and create a cinematic video prompt in English. Focus on dramatic camera movements (slow dolly, crane shots, sweeping orbits), epic lighting transitions, lens flares, and depth of field shifts. The scene should feel like a movie trailer — grand, emotional, and visually stunning. Output ONLY the video prompt, 2-4 sentences.`,
+  },
+  {
+    name: "gentle",
+    label: "עדין",
+    prompt: `Analyze the image and create a gentle, calming video prompt in English. Focus on very subtle, slow movements — a soft breeze, gentle floating particles, slow fade lighting. Camera should barely drift. The mood should be serene, peaceful, and meditative. Output ONLY the video prompt, 2-4 sentences.`,
+  },
+  {
+    name: "dynamic",
+    label: "דינמי",
+    prompt: `Analyze the image and create an energetic, dynamic video prompt in English. Focus on fast camera moves (whip pans, quick zooms, tracking shots), dramatic motion blur, explosive particle effects, and high-energy transitions. The scene should feel intense and action-packed. Output ONLY the video prompt, 2-4 sentences.`,
+  },
+  {
+    name: "realistic",
+    label: "ריאליסטי",
+    prompt: `Analyze the image and create a realistic, natural video prompt in English. Focus on subtle real-world motion — wind in hair/leaves, natural breathing, realistic physics. Minimal camera movement, as if shot on a tripod or handheld with stabilization. The scene should feel like a real captured moment. Output ONLY the video prompt, 2-4 sentences.`,
+  },
+];
+
 export const DEFAULT_SETTINGS: GenerationSettings = {
   provider: "fal",
   resolution: "1K",
@@ -53,6 +87,7 @@ export const DEFAULT_SETTINGS: GenerationSettings = {
   promptSuffix: "",
   referenceImageUrls: [],
   concurrency: 2,
+  geminiSystemPrompt: DEFAULT_GEMINI_SYSTEM_PROMPT,
 };
 
 export function estimateCost(

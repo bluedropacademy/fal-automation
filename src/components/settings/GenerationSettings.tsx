@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, Info } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { ChevronDown, Info, Sparkles, RotateCcw, Save, X } from "lucide-react";
+import { toast } from "sonner";
 import { useBatch } from "@/hooks/useBatch";
 import { Tooltip } from "@/components/common/Tooltip";
-import { RESOLUTIONS, ASPECT_RATIOS, OUTPUT_FORMATS, PRICING, KIE_PRICING, USD_TO_ILS, WEB_SEARCH_ADDON_PRICE } from "@/lib/constants";
+import { RESOLUTIONS, ASPECT_RATIOS, OUTPUT_FORMATS, PRICING, KIE_PRICING, USD_TO_ILS, WEB_SEARCH_ADDON_PRICE, DEFAULT_GEMINI_SYSTEM_PROMPT, GEMINI_PROMPT_PRESETS } from "@/lib/constants";
+import { loadGeminiPresets, saveGeminiPresets, type GeminiPreset } from "@/lib/persistence";
 import type { Provider } from "@/types/generation";
 
 const SAFETY_LABELS: Record<number, string> = {
@@ -25,6 +27,32 @@ export function GenerationSettings() {
   const { state, dispatch } = useBatch();
   const { settings } = state;
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [customPresets, setCustomPresets] = useState<GeminiPreset[]>([]);
+  const [showSavePreset, setShowSavePreset] = useState(false);
+  const [presetName, setPresetName] = useState("");
+
+  // Load custom Gemini presets from IndexedDB
+  useEffect(() => {
+    loadGeminiPresets().then(setCustomPresets);
+  }, []);
+
+  const handleSaveGeminiPreset = useCallback(async () => {
+    const name = presetName.trim();
+    if (!name) return;
+    const newPreset: GeminiPreset = { name, prompt: settings.geminiSystemPrompt };
+    const updated = [...customPresets.filter((p) => p.name !== name), newPreset];
+    await saveGeminiPresets(updated);
+    setCustomPresets(updated);
+    setPresetName("");
+    setShowSavePreset(false);
+    toast.success(`פריסט "${name}" נשמר`);
+  }, [presetName, settings.geminiSystemPrompt, customPresets]);
+
+  const handleDeleteGeminiPreset = useCallback(async (name: string) => {
+    const updated = customPresets.filter((p) => p.name !== name);
+    await saveGeminiPresets(updated);
+    setCustomPresets(updated);
+  }, [customPresets]);
 
   const isFal = (settings.provider ?? "fal") !== "kie";
   const currentPricing = isFal ? PRICING : KIE_PRICING;
@@ -288,6 +316,118 @@ export function GenerationSettings() {
                 </Tooltip>
               </label>
             )}
+
+            {/* Gemini Video Prompt System */}
+            <div className="border-t border-border pt-4">
+              <label className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground mb-2">
+                <Sparkles className="h-3.5 w-3.5" />
+                פרומפט מערכת ל-Gemini
+                <Tooltip content="ההנחיות ש-Gemini מקבל כשמנתח תמונה ויוצר פרומפט לוידאו. ניתן להתאים לסגנון הרצוי">
+                  <Info className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
+                </Tooltip>
+              </label>
+
+              {/* Built-in presets */}
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {GEMINI_PROMPT_PRESETS.map((preset) => (
+                  <button
+                    key={preset.name}
+                    onClick={() => updateSetting({ geminiSystemPrompt: preset.prompt })}
+                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
+                      settings.geminiSystemPrompt === preset.prompt
+                        ? "bg-violet-100 text-violet-700 ring-1 ring-violet-300"
+                        : "bg-white border border-border text-muted-foreground hover:border-violet-200 hover:text-violet-600"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom presets */}
+              {customPresets.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {customPresets.map((preset) => (
+                    <div key={preset.name} className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => updateSetting({ geminiSystemPrompt: preset.prompt })}
+                        className={`rounded-r-none rounded-l-md px-2.5 py-1 text-xs font-medium transition-all ${
+                          settings.geminiSystemPrompt === preset.prompt
+                            ? "bg-violet-100 text-violet-700 ring-1 ring-violet-300"
+                            : "bg-white border border-border text-muted-foreground hover:border-violet-200 hover:text-violet-600"
+                        }`}
+                      >
+                        {preset.name}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteGeminiPreset(preset.name)}
+                        className="rounded-l-none rounded-r-md border border-r border-border bg-white px-1 py-1 text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* System prompt textarea */}
+              <textarea
+                dir="ltr"
+                value={settings.geminiSystemPrompt ?? DEFAULT_GEMINI_SYSTEM_PROMPT}
+                onChange={(e) => updateSetting({ geminiSystemPrompt: e.target.value })}
+                rows={4}
+                className="w-full rounded-md border border-border bg-white px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+                placeholder="System prompt for Gemini image analysis..."
+              />
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-2 mt-1.5">
+                <button
+                  onClick={() => updateSetting({ geminiSystemPrompt: DEFAULT_GEMINI_SYSTEM_PROMPT })}
+                  className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 transition-colors"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  ברירת מחדל
+                </button>
+                {!showSavePreset ? (
+                  <button
+                    onClick={() => setShowSavePreset(true)}
+                    className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-500 transition-colors"
+                  >
+                    <Save className="h-3 w-3" />
+                    שמור כפריסט
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={presetName}
+                      onChange={(e) => setPresetName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveGeminiPreset();
+                        if (e.key === "Escape") setShowSavePreset(false);
+                      }}
+                      placeholder="שם הפריסט"
+                      autoFocus
+                      className="w-24 rounded border border-border bg-white px-2 py-0.5 text-xs focus:border-primary focus:outline-none"
+                    />
+                    <button
+                      onClick={handleSaveGeminiPreset}
+                      disabled={!presetName.trim()}
+                      className="text-xs text-violet-600 hover:text-violet-500 disabled:opacity-50 font-medium"
+                    >
+                      שמור
+                    </button>
+                    <button
+                      onClick={() => { setShowSavePreset(false); setPresetName(""); }}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      ביטול
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>

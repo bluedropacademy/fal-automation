@@ -57,3 +57,20 @@ export async function saveSettings(settings: GenerationSettings): Promise<void> 
 export async function loadSettings(): Promise<GenerationSettings | null> {
   return (await get(SETTINGS_KEY)) ?? null;
 }
+
+// --- Gemini Prompt Presets ---
+
+const GEMINI_PRESETS_KEY = "fal:geminiPresets";
+
+export interface GeminiPreset {
+  name: string;
+  prompt: string;
+}
+
+export async function saveGeminiPresets(presets: GeminiPreset[]): Promise<void> {
+  await set(GEMINI_PRESETS_KEY, presets);
+}
+
+export async function loadGeminiPresets(): Promise<GeminiPreset[]> {
+  return (await get(GEMINI_PRESETS_KEY)) ?? [];
+}
