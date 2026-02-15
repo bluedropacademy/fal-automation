@@ -23,9 +23,10 @@ export function PromptEditor() {
         validPrompts.length,
         settings.numImages,
         settings.resolution,
-        settings.enableWebSearch
+        settings.enableWebSearch,
+        settings.provider
       ),
-    [validPrompts.length, settings.numImages, settings.resolution, settings.enableWebSearch]
+    [validPrompts.length, settings.numImages, settings.resolution, settings.enableWebSearch, settings.provider]
   );
 
   const handleTextChange = (text: string) => {
