@@ -34,3 +34,17 @@ export interface ImageProvider {
     onStatusUpdate?: OnStatusUpdate
   ): Promise<ProviderGenerateResult>;
 }
+
+// --- Video generation types (Kie AI only) ---
+
+export interface VideoGenerateInput {
+  prompt: string;
+  imageUrl: string;
+  duration: "6" | "10";
+  resolution: "768P" | "1080P";
+}
+
+export interface VideoGenerateResult {
+  videoUrl: string;
+  taskId: string;
+}

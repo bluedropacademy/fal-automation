@@ -1,5 +1,5 @@
-import { KIE_MODEL_TEXT_TO_IMAGE, KIE_MODEL_IMAGE_EDIT, KIE_POLL_INTERVAL_MS, KIE_MAX_POLL_ATTEMPTS } from "@/lib/constants";
-import type { ImageProvider, ProviderGenerateInput, ProviderGenerateResult, OnStatusUpdate } from "./types";
+import { KIE_MODEL_TEXT_TO_IMAGE, KIE_MODEL_IMAGE_EDIT, KIE_MODEL_IMAGE_TO_VIDEO, KIE_POLL_INTERVAL_MS, KIE_MAX_POLL_ATTEMPTS } from "@/lib/constants";
+import type { ImageProvider, ProviderGenerateInput, ProviderGenerateResult, OnStatusUpdate, VideoGenerateInput, VideoGenerateResult } from "./types";
 
 const KIE_API_BASE = "https://api.kie.ai/api/v1/jobs";
 
@@ -45,6 +45,117 @@ export class KieProvider implements ImageProvider {
     };
 
     return this.createAndPoll(KIE_MODEL_IMAGE_EDIT, kieInput, onStatusUpdate);
+  }
+
+  async generateVideo(
+    input: VideoGenerateInput,
+    onStatusUpdate?: OnStatusUpdate
+  ): Promise<VideoGenerateResult> {
+    const kieInput: Record<string, unknown> = {
+      prompt: input.prompt,
+      image_url: input.imageUrl,
+      duration: input.duration,
+      resolution: input.resolution,
+    };
+
+    const createRes = await fetch(`${KIE_API_BASE}/createTask`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${getKieKey()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model: KIE_MODEL_IMAGE_TO_VIDEO, input: kieInput }),
+    });
+
+    if (!createRes.ok) {
+      const errText = await createRes.text();
+      throw new Error(`Kie AI video createTask failed (${createRes.status}): ${errText}`);
+    }
+
+    const createData = await createRes.json();
+    if (createData.code !== 200) {
+      throw new Error(`Kie AI video createTask error: ${createData.msg}`);
+    }
+
+    const taskId = createData.data.taskId as string;
+    console.log(`[Kie] Video task created: ${taskId}`);
+    onStatusUpdate?.("queued");
+
+    let consecutiveErrors = 0;
+
+    for (let attempt = 0; attempt < KIE_MAX_POLL_ATTEMPTS; attempt++) {
+      await sleep(KIE_POLL_INTERVAL_MS);
+
+      let pollRes: Response;
+      try {
+        pollRes = await fetch(
+          `${KIE_API_BASE}/recordInfo?taskId=${encodeURIComponent(taskId)}`,
+          { headers: { Authorization: `Bearer ${getKieKey()}` } }
+        );
+      } catch (fetchErr) {
+        consecutiveErrors++;
+        console.warn(`[Kie] Video poll error for ${taskId}:`, fetchErr);
+        if (consecutiveErrors >= 5) {
+          throw new Error(`Kie AI video polling failed: 5 consecutive network errors`);
+        }
+        continue;
+      }
+
+      if (!pollRes.ok) {
+        consecutiveErrors++;
+        console.warn(`[Kie] Video poll HTTP ${pollRes.status} for ${taskId}`);
+        if (consecutiveErrors >= 5) {
+          throw new Error(`Kie AI video polling failed: 5 consecutive HTTP errors`);
+        }
+        continue;
+      }
+
+      consecutiveErrors = 0;
+      const pollData = await pollRes.json();
+      const state = pollData.data?.state as string | undefined;
+
+      if (state === "generating") {
+        onStatusUpdate?.("processing");
+      } else if (state === "success") {
+        let resultData: Record<string, unknown>;
+        const raw = pollData.data.resultJson;
+        if (typeof raw === "string") {
+          try {
+            resultData = JSON.parse(raw);
+          } catch {
+            throw new Error(`Kie AI video returned invalid resultJson`);
+          }
+        } else if (raw && typeof raw === "object") {
+          resultData = raw as Record<string, unknown>;
+        } else {
+          throw new Error(`Kie AI video returned unexpected resultJson type: ${typeof raw}`);
+        }
+
+        const videoUrl =
+          (resultData.video_url as string) ??
+          (resultData.videoUrl as string) ??
+          (resultData.url as string) ??
+          (resultData.resultUrls as string[])?.[0] ??
+          (resultData.result_urls as string[])?.[0] ??
+          null;
+
+        if (!videoUrl) {
+          console.error(`[Kie] Video no URL in resultJson:`, JSON.stringify(resultData));
+          throw new Error(`Kie AI video success but no URL. Keys: ${Object.keys(resultData).join(", ")}`);
+        }
+
+        console.log(`[Kie] Video task ${taskId} completed`);
+        return { videoUrl, taskId };
+      } else if (state === "fail") {
+        throw new Error(
+          `Kie AI video failed: ${pollData.data.failMsg ?? "Unknown error"} (code: ${pollData.data.failCode})`
+        );
+      }
+    }
+
+    throw new Error(
+      `Kie AI video timed out after ${(KIE_MAX_POLL_ATTEMPTS * KIE_POLL_INTERVAL_MS) / 1000}s`
+    );
   }
 
   private async createAndPoll(

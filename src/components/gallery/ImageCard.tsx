@@ -1,22 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { formatDuration } from "@/lib/format-utils";
 import type { BatchImage } from "@/types/batch";
-import { Loader2, Pencil, AlertCircle } from "lucide-react";
-
-const PLACEHOLDER_BLUR =
-  "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiNlNWU3ZWIiLz48L3N2Zz4=";
+import { Loader2, Pencil, AlertCircle, Check } from "lucide-react";
 
 interface ImageCardProps {
   image: BatchImage;
   onClick: () => void;
   onEdit: () => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-export function ImageCard({ image, onClick, onEdit }: ImageCardProps) {
+export function ImageCard({ image, onClick, onEdit, selectable, selected, onToggleSelect }: ImageCardProps) {
   const [loaded, setLoaded] = useState(false);
 
   return (
@@ -30,7 +29,7 @@ export function ImageCard({ image, onClick, onEdit }: ImageCardProps) {
             : image.status === "failed"
               ? "border-destructive/50"
               : "border-border"
-      }`}
+      } ${selectable && selected ? "ring-2 ring-primary ring-offset-1" : ""}`}
     >
       {/* Image or Placeholder */}
       <div className="aspect-square w-full overflow-hidden bg-muted relative">
@@ -39,17 +38,13 @@ export function ImageCard({ image, onClick, onEdit }: ImageCardProps) {
             {!loaded && (
               <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-muted via-muted-foreground/10 to-muted" />
             )}
-            <Image
+            <img
               src={image.result.url}
               alt={image.rawPrompt}
-              width={320}
-              height={320}
-              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 200px"
+              loading="lazy"
               className={`h-full w-full object-cover transition-all duration-300 group-hover:scale-105 ${
                 loaded ? "opacity-100" : "opacity-0"
               }`}
-              placeholder="blur"
-              blurDataURL={PLACEHOLDER_BLUR}
               onLoad={() => setLoaded(true)}
             />
           </>
@@ -78,8 +73,8 @@ export function ImageCard({ image, onClick, onEdit }: ImageCardProps) {
         <StatusBadge status={image.status} />
       </div>
 
-      {/* Version Badge */}
-      {(image.versionLabel || (image.versions && image.versions.length > 1)) && (
+      {/* Version Badge (hidden in selection mode to avoid overlap) */}
+      {!selectable && (image.versionLabel || (image.versions && image.versions.length > 1)) && (
         <div className="absolute top-1.5 right-1.5">
           <span className="rounded-full bg-primary/90 px-2 py-0.5 text-[10px] font-bold text-white">
             {image.versionLabel
@@ -87,6 +82,23 @@ export function ImageCard({ image, onClick, onEdit }: ImageCardProps) {
               : `V${image.currentVersion ?? image.versions!.length}`}
           </span>
         </div>
+      )}
+
+      {/* Selection Checkbox */}
+      {selectable && image.status === "completed" && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect?.();
+          }}
+          className={`absolute top-1.5 right-1.5 z-10 flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
+            selected
+              ? "border-primary bg-primary text-white"
+              : "border-white/80 bg-black/30 text-transparent hover:border-white"
+          }`}
+        >
+          {selected && <Check className="h-3 w-3" />}
+        </button>
       )}
 
       {/* Edit Button (on hover) */}
