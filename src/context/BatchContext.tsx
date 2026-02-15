@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useReducer, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useReducer, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Batch, BatchImage, BatchStatus, ImageVersion } from "@/types/batch";
 import type { GenerationSettings } from "@/types/generation";
 import { DEFAULT_SETTINGS } from "@/lib/constants";
@@ -188,6 +188,7 @@ const BatchContext = createContext<{
   state: BatchState;
   dispatch: React.Dispatch<BatchAction>;
   hydrated: boolean;
+  flushSave: () => void;
 } | null>(null);
 
 export function BatchProvider({ children }: { children: ReactNode }) {
@@ -234,6 +235,10 @@ export function BatchProvider({ children }: { children: ReactNode }) {
     hydrate();
   }, []);
 
+  // Keep a ref to the latest batch so beforeunload can access it synchronously
+  const batchRef = useRef(state.currentBatch);
+  batchRef.current = state.currentBatch;
+
   // Persist batch state on changes (debounced) — skip when viewing history
   useEffect(() => {
     if (!hydrated || state.viewingHistory) return;
@@ -246,6 +251,24 @@ export function BatchProvider({ children }: { children: ReactNode }) {
     }, 300);
     return () => clearTimeout(timeout);
   }, [state.currentBatch, state.viewingHistory, hydrated]);
+
+  // Force-save on page unload to prevent data loss from debounce
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (batchRef.current) {
+        saveCurrentBatch(batchRef.current);
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
+
+  // Immediate save — call after critical state changes (e.g. version updates)
+  const flushSave = () => {
+    if (batchRef.current) {
+      saveCurrentBatch(batchRef.current);
+    }
+  };
 
   // Persist settings on changes
   useEffect(() => {
@@ -263,7 +286,7 @@ export function BatchProvider({ children }: { children: ReactNode }) {
   }, [state.currentBatch?.status, hydrated]);
 
   return (
-    <BatchContext.Provider value={{ state, dispatch, hydrated }}>
+    <BatchContext.Provider value={{ state, dispatch, hydrated, flushSave }}>
       {children}
     </BatchContext.Provider>
   );
