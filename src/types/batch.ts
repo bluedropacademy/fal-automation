@@ -1,4 +1,4 @@
-export type ImageStatus = "pending" | "queued" | "processing" | "completed" | "failed";
+export type ImageStatus = "pending" | "queued" | "processing" | "completed" | "failed" | "editing";
 
 export type BatchStatus = "idle" | "running" | "completed" | "cancelled" | "error" | "interrupted";
 

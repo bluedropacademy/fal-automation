@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { X, Loader2, Pencil, Copy, Layers } from "lucide-react";
+import { X, Pencil, Copy, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { useBatch } from "@/hooks/useBatch";
 import { uid, proxyImageUrl } from "@/lib/format-utils";
@@ -41,14 +41,12 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
   const [editMode, setEditMode] = useState<EditMode>("replace");
   const [prompt, setPrompt] = useState("");
   const [variableValues, setVariableValues] = useState("");
-  const [loading, setLoading] = useState(false);
 
   const imageUrl = image.result?.url;
   if (!imageUrl) return null;
 
   const getNextVersionNumber = useCallback(() => {
     if (!batch) return 2;
-    // For replace: check existing versions on this image
     const existingVersions = image.versions?.length ?? 0;
     return existingVersions > 0 ? existingVersions + 1 : 2;
   }, [batch, image]);
@@ -60,7 +58,6 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
 
   const getVersionLabel = useCallback((baseIndex: number) => {
     if (!batch) return "V2";
-    // Count existing images that are edits of the same source
     const sourceIdx = image.sourceImageIndex ?? image.index;
     const existingEdits = batch.images.filter(
       (img) => img.sourceImageIndex === sourceIdx || img.index === sourceIdx
@@ -68,186 +65,236 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
     return `V${existingEdits.length + baseIndex + 1}`;
   }, [batch, image]);
 
-  const handleSubmit = async () => {
+  const buildRequestBody = (editPrompt: string, variations?: { prompt: string; label: string }[]) => ({
+    imageUrl,
+    ...(variations ? { variations } : { prompt: editPrompt }),
+    provider: settings.provider ?? "fal",
+    settings: {
+      resolution: settings.resolution,
+      aspectRatio: settings.aspectRatio,
+      outputFormat: settings.outputFormat,
+      safetyTolerance: settings.safetyTolerance,
+      enableWebSearch: settings.enableWebSearch,
+      seed: settings.seed,
+    },
+  });
+
+  const handleSubmit = () => {
     if (!prompt.trim()) {
       toast.error("נא להזין פרומפט לעריכה");
       return;
     }
 
-    setLoading(true);
-
-    try {
-      if (editMode === "parallel") {
-        await handleParallelEdit();
-      } else {
-        await handleSingleEdit();
-      }
-      onClose();
-    } catch (error) {
-      toast.error("שגיאה בעריכה", {
-        description: error instanceof Error ? error.message : "שגיאה לא ידועה",
-      });
-    } finally {
-      setLoading(false);
+    if (editMode === "replace") {
+      fireReplaceEdit();
+    } else if (editMode === "duplicate") {
+      fireDuplicateEdit();
+    } else {
+      fireParallelEdit();
     }
   };
 
-  const handleSingleEdit = async () => {
-    const res = await fetch("/api/edit", {
+  const fireReplaceEdit = () => {
+    // Capture values before closing
+    const capturedPrompt = prompt.trim();
+    const capturedIndex = image.index;
+    const versionNum = getNextVersionNumber();
+
+    // Mark image as editing and close immediately
+    dispatch({ type: "UPDATE_IMAGE", index: capturedIndex, update: { status: "editing" } });
+    onClose();
+
+    // Fire-and-forget
+    fetch("/api/edit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        imageUrl,
-        prompt: prompt.trim(),
-        provider: settings.provider ?? "fal",
-        settings: {
-          resolution: settings.resolution,
-          aspectRatio: settings.aspectRatio,
-          outputFormat: settings.outputFormat,
-          safetyTolerance: settings.safetyTolerance,
-          enableWebSearch: settings.enableWebSearch,
-          seed: settings.seed,
-        },
-      }),
-    });
+      body: JSON.stringify(buildRequestBody(capturedPrompt)),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Edit failed");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        const newVersion: ImageVersion = {
+          versionNumber: versionNum,
+          url: data.image.url,
+          contentType: data.image.contentType,
+          width: data.image.width,
+          height: data.image.height,
+          editPrompt: capturedPrompt,
+          createdAt: new Date().toISOString(),
+        };
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || "Edit failed");
-    }
+        dispatch({
+          type: "REPLACE_IMAGE_VERSION",
+          index: capturedIndex,
+          newVersion,
+          newResult: data.image,
+        });
 
-    const data = await res.json();
-
-    if (editMode === "replace") {
-      const versionNum = getNextVersionNumber();
-      const newVersion: ImageVersion = {
-        versionNumber: versionNum,
-        url: data.image.url,
-        contentType: data.image.contentType,
-        width: data.image.width,
-        height: data.image.height,
-        editPrompt: prompt.trim(),
-        createdAt: new Date().toISOString(),
-      };
-
-      dispatch({
-        type: "REPLACE_IMAGE_VERSION",
-        index: image.index,
-        newVersion,
-        newResult: data.image,
+        toast.success(`עריכה הושלמה — V${versionNum}`);
+      })
+      .catch((error) => {
+        dispatch({ type: "UPDATE_IMAGE", index: capturedIndex, update: { status: "completed" } });
+        toast.error("שגיאה בעריכה", {
+          description: error instanceof Error ? error.message : "שגיאה לא ידועה",
+        });
       });
-
-      toast.success(`עריכה הושלמה — V${versionNum}`);
-    } else {
-      // Duplicate mode
-      const newIndex = getNextImageIndex();
-      const vLabel = getVersionLabel(0);
-      const newImage: BatchImage = {
-        id: uid(),
-        index: newIndex,
-        rawPrompt: `[${vLabel}] ${prompt.trim()}`,
-        fullPrompt: prompt.trim(),
-        status: "completed",
-        result: data.image,
-        seed: data.seed,
-        requestId: data.requestId,
-        completedAt: new Date().toISOString(),
-        sourceImageIndex: image.sourceImageIndex ?? image.index,
-        versionLabel: vLabel,
-      };
-
-      dispatch({ type: "ADD_IMAGES", images: [newImage] });
-      toast.success(`שכפול הושלם — ${vLabel}`);
-    }
   };
 
-  const handleParallelEdit = async () => {
+  const fireDuplicateEdit = () => {
+    // Capture values and create placeholder
+    const capturedPrompt = prompt.trim();
+    const newIndex = getNextImageIndex();
+    const vLabel = getVersionLabel(0);
+    const placeholderId = uid();
+
+    const placeholder: BatchImage = {
+      id: placeholderId,
+      index: newIndex,
+      rawPrompt: `[${vLabel}] ${capturedPrompt}`,
+      fullPrompt: capturedPrompt,
+      status: "processing",
+      sourceImageIndex: image.sourceImageIndex ?? image.index,
+      versionLabel: vLabel,
+    };
+
+    dispatch({ type: "ADD_IMAGES", images: [placeholder] });
+    onClose();
+
+    // Fire-and-forget
+    fetch("/api/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildRequestBody(capturedPrompt)),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Edit failed");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        dispatch({
+          type: "UPDATE_IMAGE",
+          index: newIndex,
+          update: {
+            status: "completed",
+            result: data.image,
+            seed: data.seed,
+            requestId: data.requestId,
+            completedAt: new Date().toISOString(),
+          },
+        });
+        toast.success(`שכפול הושלם — ${vLabel}`);
+      })
+      .catch((error) => {
+        dispatch({
+          type: "UPDATE_IMAGE",
+          index: newIndex,
+          update: { status: "failed", error: error instanceof Error ? error.message : "שגיאה לא ידועה" },
+        });
+        toast.error("שגיאה בשכפול", {
+          description: error instanceof Error ? error.message : "שגיאה לא ידועה",
+        });
+      });
+  };
+
+  const fireParallelEdit = () => {
     const values = variableValues
       .split("\n")
       .map((v) => v.trim())
       .filter((v) => v.length > 0);
 
     if (values.length === 0) {
-      throw new Error("נא להזין לפחות ערך אחד למשתנה");
+      toast.error("נא להזין לפחות ערך אחד למשתנה");
+      return;
     }
 
-    // Check if prompt has [X] placeholder
     const hasPlaceholder = /\[.+?\]/.test(prompt);
-
     const variations = values.map((value) => {
-      let finalPrompt: string;
-      if (hasPlaceholder) {
-        // Replace all [...] placeholders with the value
-        finalPrompt = prompt.replace(/\[.+?\]/g, value);
-      } else {
-        // Append value to prompt
-        finalPrompt = `${prompt.trim()} ${value}`;
-      }
+      const finalPrompt = hasPlaceholder
+        ? prompt.replace(/\[.+?\]/g, value)
+        : `${prompt.trim()} ${value}`;
+      return { prompt: finalPrompt, label: value };
+    });
+
+    // Create placeholder images
+    const baseIndex = getNextImageIndex();
+    const placeholders: BatchImage[] = variations.map((v, i) => {
+      const vLabel = getVersionLabel(i);
       return {
-        prompt: finalPrompt,
-        label: value,
+        id: uid(),
+        index: baseIndex + i,
+        rawPrompt: `[${vLabel}] ${v.prompt}`,
+        fullPrompt: v.prompt,
+        status: "processing" as const,
+        sourceImageIndex: image.sourceImageIndex ?? image.index,
+        versionLabel: vLabel,
       };
     });
 
+    dispatch({ type: "ADD_IMAGES", images: placeholders });
+    onClose();
     toast.info(`מייצר ${variations.length} וריאציות...`);
 
-    const res = await fetch("/api/edit", {
+    // Fire-and-forget
+    fetch("/api/edit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        imageUrl,
-        variations,
-        provider: settings.provider ?? "fal",
-        settings: {
-          resolution: settings.resolution,
-          aspectRatio: settings.aspectRatio,
-          outputFormat: settings.outputFormat,
-          safetyTolerance: settings.safetyTolerance,
-          enableWebSearch: settings.enableWebSearch,
-          seed: settings.seed,
-        },
-      }),
-    });
+      body: JSON.stringify(buildRequestBody(prompt.trim(), variations)),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Parallel edit failed");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        // Update each placeholder with the result
+        data.results.forEach(
+          (result: { label: string; prompt: string; image: BatchImage["result"]; seed?: number; requestId?: string }, i: number) => {
+            dispatch({
+              type: "UPDATE_IMAGE",
+              index: baseIndex + i,
+              update: {
+                status: "completed",
+                result: result.image,
+                seed: result.seed,
+                requestId: result.requestId,
+                completedAt: new Date().toISOString(),
+              },
+            });
+          }
+        );
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || "Parallel edit failed");
-    }
+        const successCount = data.results.length;
+        const errorCount = data.errors?.length ?? 0;
 
-    const data = await res.json();
-    const baseIndex = getNextImageIndex();
-
-    const newImages: BatchImage[] = data.results.map(
-      (result: { label: string; prompt: string; image: BatchImage["result"]; seed?: number; requestId?: string }, i: number) => {
-        const vLabel = getVersionLabel(i);
-        return {
-          id: uid(),
-          index: baseIndex + i,
-          rawPrompt: `[${vLabel}] ${result.prompt}`,
-          fullPrompt: result.prompt,
-          status: "completed" as const,
-          result: result.image,
-          seed: result.seed,
-          requestId: result.requestId,
-          completedAt: new Date().toISOString(),
-          sourceImageIndex: image.sourceImageIndex ?? image.index,
-          versionLabel: vLabel,
-        };
-      }
-    );
-
-    if (newImages.length > 0) {
-      dispatch({ type: "ADD_IMAGES", images: newImages });
-    }
-
-    const successCount = data.results.length;
-    const errorCount = data.errors?.length ?? 0;
-
-    if (errorCount > 0) {
-      toast.warning(`${successCount} וריאציות הושלמו, ${errorCount} נכשלו`);
-    } else {
-      toast.success(`${successCount} וריאציות נוצרו בהצלחה!`);
-    }
+        if (errorCount > 0) {
+          toast.warning(`${successCount} וריאציות הושלמו, ${errorCount} נכשלו`);
+        } else {
+          toast.success(`${successCount} וריאציות נוצרו בהצלחה!`);
+        }
+      })
+      .catch((error) => {
+        // Mark all placeholders as failed
+        placeholders.forEach((_, i) => {
+          dispatch({
+            type: "UPDATE_IMAGE",
+            index: baseIndex + i,
+            update: { status: "failed", error: error instanceof Error ? error.message : "שגיאה לא ידועה" },
+          });
+        });
+        toast.error("שגיאה בעריכה מקבילה", {
+          description: error instanceof Error ? error.message : "שגיאה לא ידועה",
+        });
+      });
   };
 
   return (
@@ -362,29 +409,19 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
         <div className="flex gap-2">
           <button
             onClick={handleSubmit}
-            disabled={loading || !prompt.trim()}
+            disabled={!prompt.trim()}
             className="flex-1 flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                מעבד...
-              </>
-            ) : (
-              <>
-                <Pencil className="h-4 w-4" />
-                {editMode === "parallel"
-                  ? `ערוך ${variableValues.split("\n").filter((v) => v.trim()).length} וריאציות`
-                  : editMode === "replace"
-                    ? "ערוך והחלף"
-                    : "ערוך ושכפל"}
-              </>
-            )}
+            <Pencil className="h-4 w-4" />
+            {editMode === "parallel"
+              ? `ערוך ${variableValues.split("\n").filter((v) => v.trim()).length} וריאציות`
+              : editMode === "replace"
+                ? "ערוך והחלף"
+                : "ערוך ושכפל"}
           </button>
           <button
             onClick={onClose}
-            disabled={loading}
-            className="rounded-md border border-border px-4 py-2.5 text-sm font-medium hover:bg-muted disabled:opacity-50 transition-colors"
+            className="rounded-md border border-border px-4 py-2.5 text-sm font-medium hover:bg-muted transition-colors"
           >
             ביטול
           </button>

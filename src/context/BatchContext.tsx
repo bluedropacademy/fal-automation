@@ -209,6 +209,16 @@ export function BatchProvider({ children }: { children: ReactNode }) {
           batch = { ...batch, status: "interrupted" };
         }
 
+        // Revert any images stuck in "editing" status (edit API call lost on reload)
+        if (batch && batch.images.some((img) => img.status === "editing")) {
+          batch = {
+            ...batch,
+            images: batch.images.map((img) =>
+              img.status === "editing" ? { ...img, status: "completed" as const } : img
+            ),
+          };
+        }
+
         dispatch({
           type: "HYDRATE",
           currentBatch: batch,

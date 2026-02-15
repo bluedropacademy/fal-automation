@@ -24,16 +24,18 @@ export function ImageCard({ image, onClick, onEdit, selectable, selected, onTogg
       className={`card-interactive group relative overflow-hidden rounded-xl border bg-card ${
         image.status === "completed"
           ? "border-border cursor-pointer hover:shadow-lg hover:border-primary/50"
-          : image.status === "processing"
-            ? "border-primary animate-pulse-border"
-            : image.status === "failed"
-              ? "border-destructive/50"
-              : "border-border"
+          : image.status === "editing"
+            ? "border-amber-400 animate-pulse-border-amber"
+            : image.status === "processing"
+              ? "border-primary animate-pulse-border"
+              : image.status === "failed"
+                ? "border-destructive/50"
+                : "border-border"
       } ${selectable && selected ? "ring-2 ring-primary ring-offset-1" : ""}`}
     >
       {/* Image or Placeholder */}
       <div className="aspect-square w-full overflow-hidden bg-muted relative">
-        {image.status === "completed" && image.result?.url ? (
+        {(image.status === "completed" || image.status === "editing") && image.result?.url ? (
           <>
             {!loaded && (
               <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-muted via-muted-foreground/10 to-muted" />
@@ -42,11 +44,16 @@ export function ImageCard({ image, onClick, onEdit, selectable, selected, onTogg
               src={proxyImageUrl(image.result.url)}
               alt={image.rawPrompt}
               loading="lazy"
-              className={`h-full w-full object-cover transition-all duration-300 group-hover:scale-105 ${
-                loaded ? "opacity-100" : "opacity-0"
-              }`}
+              className={`h-full w-full object-cover transition-all duration-300 ${
+                image.status === "completed" ? "group-hover:scale-105" : ""
+              } ${loaded ? "opacity-100" : "opacity-0"}`}
               onLoad={() => setLoaded(true)}
             />
+            {image.status === "editing" && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/30">
+                <Loader2 className="h-8 w-8 animate-spin text-white" />
+              </div>
+            )}
           </>
         ) : image.status === "processing" || image.status === "queued" ? (
           <div className="flex h-full w-full items-center justify-center">
