@@ -5,22 +5,23 @@ import { ChevronDown, Download, ImageIcon, Video, X } from "lucide-react";
 import { toast } from "sonner";
 import JSZip from "jszip";
 import { useBatch } from "@/hooks/useBatch";
-import { sanitizeFilename } from "@/lib/format-utils";
+import { sanitizeFilename, generateBatchId, uid } from "@/lib/format-utils";
+import { saveBatchToHistory } from "@/lib/persistence";
+import { DEFAULT_SETTINGS } from "@/lib/constants";
 import { SectionCard } from "@/components/common/SectionCard";
 import { ImageCard } from "./ImageCard";
 import { ImageLightbox } from "./ImageLightbox";
 import { EditDialog } from "./EditDialog";
-import { VideoDialog } from "./VideoDialog";
+import type { Batch, BatchImage } from "@/types/batch";
 
 export function ImageGallery() {
-  const { state } = useBatch();
+  const { state, dispatch } = useBatch();
   const batch = state.currentBatch;
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [editImageIndex, setEditImageIndex] = useState<number | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [videoDialogOpen, setVideoDialogOpen] = useState(false);
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
   const downloadMenuRef = useRef<HTMLDivElement>(null);
 
@@ -125,7 +126,7 @@ export function ImageGallery() {
         icon={<ImageIcon className="h-4 w-4" />}
       >
         <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="rounded-2xl bg-primary/5 p-6 mb-4">
+          <div className="rounded-2xl bg-gradient-to-br from-primary/5 to-primary/10 p-6 mb-4 ring-1 ring-primary/10">
             <ImageIcon className="h-12 w-12 text-primary/40" />
           </div>
           <h4 className="text-lg font-semibold text-foreground mb-1">עוד אין תמונות</h4>
@@ -149,7 +150,7 @@ export function ImageGallery() {
             {!selectionMode ? (
               <button
                 onClick={() => setSelectionMode(true)}
-                className="flex items-center gap-1.5 rounded-lg bg-muted px-3 py-1.5 text-xs font-medium text-foreground hover:bg-gray-200 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg bg-muted px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/70 transition-colors"
               >
                 <Video className="h-3.5 w-3.5" />
                 בחר לוידאו
@@ -157,7 +158,7 @@ export function ImageGallery() {
             ) : (
               <button
                 onClick={clearSelection}
-                className="flex items-center gap-1.5 rounded-lg bg-muted px-3 py-1.5 text-xs font-medium text-foreground hover:bg-gray-200 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg bg-muted px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/70 transition-colors"
               >
                 <X className="h-3.5 w-3.5" />
                 ביטול בחירה
@@ -167,7 +168,7 @@ export function ImageGallery() {
               <button
                 onClick={() => setDownloadMenuOpen((v) => !v)}
                 disabled={downloading}
-                className="flex items-center gap-1.5 rounded-lg bg-muted px-3 py-1.5 text-xs font-medium text-foreground hover:bg-gray-200 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg bg-muted px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/70 disabled:opacity-50 transition-colors"
               >
                 <Download className="h-3.5 w-3.5" />
                 {downloading
@@ -176,7 +177,7 @@ export function ImageGallery() {
                 <ChevronDown className="h-3 w-3" />
               </button>
               {downloadMenuOpen && (
-                <div className="absolute left-0 top-full mt-1 z-50 min-w-[180px] rounded-lg border border-border bg-card shadow-lg py-1">
+                <div className="absolute left-0 top-full mt-1 z-50 min-w-[180px] rounded-lg border border-border bg-card shadow-[var(--shadow-elevated)] py-1 animate-dropdown-in">
                   <button
                     onClick={() => handleDownloadAll("sequential")}
                     className="w-full px-3 py-2 text-right text-xs hover:bg-muted transition-colors"
@@ -250,7 +251,32 @@ export function ImageGallery() {
           </button>
           <div className="h-5 w-px bg-border" />
           <button
-            onClick={() => setVideoDialogOpen(true)}
+            onClick={() => {
+              // Create a video batch from selected images and switch to VideoGallery
+              const batchId = generateBatchId();
+              const batchImages: BatchImage[] = selectedImages.map((img, i) => ({
+                id: uid(),
+                index: i,
+                rawPrompt: img.rawPrompt,
+                fullPrompt: img.rawPrompt,
+                status: "pending" as const,
+                sourceImageUrl: img.result!.url,
+              }));
+              const videoBatch: Batch = {
+                id: batchId,
+                name: `וידאו ${batchId}`,
+                type: "video",
+                status: "idle",
+                images: batchImages,
+                settings: state.settings || DEFAULT_SETTINGS,
+                createdAt: new Date().toISOString(),
+                estimatedCost: 0,
+              };
+              saveBatchToHistory(videoBatch);
+              window.dispatchEvent(new Event("videoBatchSaved"));
+              dispatch({ type: "VIEW_HISTORY_BATCH", batch: videoBatch });
+              clearSelection();
+            }}
             className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             <Video className="h-4 w-4" />
@@ -265,16 +291,6 @@ export function ImageGallery() {
         </div>
       )}
 
-      {/* Video Generation Dialog */}
-      {videoDialogOpen && (
-        <VideoDialog
-          images={selectedImages}
-          onClose={() => {
-            setVideoDialogOpen(false);
-            clearSelection();
-          }}
-        />
-      )}
     </SectionCard>
   );
 }

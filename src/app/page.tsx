@@ -43,7 +43,7 @@ function WorkflowSteps() {
   ];
 
   return (
-    <div className="flex items-center justify-center gap-0 py-2.5 px-6 border-b border-border bg-card/50">
+    <div className="flex items-center justify-center gap-0 py-3 px-6 border-b border-border/60 bg-gradient-to-b from-card to-background">
       {steps.map((step, i) => {
         const Icon = step.icon;
         const isActive = i === activeStep;
@@ -51,14 +51,14 @@ function WorkflowSteps() {
         return (
           <Fragment key={i}>
             {i > 0 && (
-              <div className={`h-px w-8 ${isDone ? "bg-primary" : "bg-border"}`} />
+              <div className={`h-px w-10 transition-colors duration-300 ${isDone ? "bg-primary" : "bg-border/60"}`} />
             )}
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+            <div className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all duration-300 ${
               isActive
-                ? "bg-primary/10 text-primary"
+                ? "bg-primary/10 text-primary shadow-sm shadow-primary/10 ring-1 ring-primary/20"
                 : isDone
                   ? "text-primary/70"
-                  : "text-muted-foreground"
+                  : "text-muted-foreground/60"
             }`}>
               <Icon className="h-3.5 w-3.5" />
               {step.label}
@@ -74,15 +74,18 @@ export default function Home() {
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
-      <header className="bg-card px-6 py-3 shadow-[0_1px_3px_0_rgba(0,0,0,0.05)]">
+      <header className="relative bg-card px-6 py-3.5 border-b border-border/60 shadow-[0_1px_3px_0_rgba(0,0,0,0.04)]">
+        <div className="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-l from-primary via-primary/70 to-primary/30" />
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Images className="h-6 w-6 text-primary" />
-            <h1 className="text-lg font-bold text-foreground">
+            <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10">
+              <Images className="h-5 w-5 text-primary" />
+            </div>
+            <h1 className="text-lg font-bold text-foreground tracking-tight">
               Fal Automation — מחולל תמונות בכמויות
             </h1>
           </div>
-          <div className="rounded-lg bg-muted/50 px-3 py-1.5">
+          <div className="rounded-lg bg-muted/50 border border-border/50 px-3 py-1.5">
             <BalanceDisplay />
           </div>
         </div>
@@ -113,7 +116,7 @@ export default function Home() {
         </main>
 
         {/* Sidebar */}
-        <aside className="w-80 shrink-0 overflow-y-auto border-s border-border bg-muted/30 p-4 flex flex-col gap-4">
+        <aside className="w-80 shrink-0 overflow-y-auto border-s border-border/60 bg-muted/20 p-4 flex flex-col gap-4">
           <CollapsibleSection
             title="פריסטים"
             icon={<Bookmark className="h-4 w-4" />}

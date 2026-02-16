@@ -148,7 +148,7 @@ export function GenerationSettings() {
         <select
           value={settings.aspectRatio}
           onChange={(e) => updateSetting({ aspectRatio: e.target.value })}
-          className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+          className="input-base w-full rounded-lg border border-border bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
         >
           {ASPECT_RATIOS.map((ratio) => (
             <option key={ratio} value={ratio}>
@@ -240,7 +240,7 @@ export function GenerationSettings() {
                 <select
                   value={settings.numImages}
                   onChange={(e) => updateSetting({ numImages: Number(e.target.value) })}
-                  className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                  className="input-base w-full rounded-lg border border-border bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 >
                   {[1, 2, 3, 4].map((n) => (
                     <option key={n} value={n}>
@@ -269,7 +269,7 @@ export function GenerationSettings() {
                     })
                   }
                   placeholder="אקראי"
-                  className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+                  className="input-base w-full rounded-lg border border-border bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
             )}
@@ -335,8 +335,8 @@ export function GenerationSettings() {
                     onClick={() => updateSetting({ geminiSystemPrompt: preset.prompt })}
                     className={`rounded-md px-2.5 py-1 text-xs font-medium transition-all ${
                       settings.geminiSystemPrompt === preset.prompt
-                        ? "bg-violet-100 text-violet-700 ring-1 ring-violet-300"
-                        : "bg-white border border-border text-muted-foreground hover:border-violet-200 hover:text-violet-600"
+                        ? "bg-accent-muted text-accent ring-1 ring-accent-border"
+                        : "bg-white border border-border text-muted-foreground hover:border-accent-border/60 hover:text-accent"
                     }`}
                   >
                     {preset.label}
@@ -353,8 +353,8 @@ export function GenerationSettings() {
                         onClick={() => updateSetting({ geminiSystemPrompt: preset.prompt })}
                         className={`rounded-r-none rounded-l-md px-2.5 py-1 text-xs font-medium transition-all ${
                           settings.geminiSystemPrompt === preset.prompt
-                            ? "bg-violet-100 text-violet-700 ring-1 ring-violet-300"
-                            : "bg-white border border-border text-muted-foreground hover:border-violet-200 hover:text-violet-600"
+                            ? "bg-accent-muted text-accent ring-1 ring-accent-border"
+                            : "bg-white border border-border text-muted-foreground hover:border-accent-border/60 hover:text-accent"
                         }`}
                       >
                         {preset.name}
@@ -376,7 +376,7 @@ export function GenerationSettings() {
                 value={settings.geminiSystemPrompt ?? DEFAULT_GEMINI_SYSTEM_PROMPT}
                 onChange={(e) => updateSetting({ geminiSystemPrompt: e.target.value })}
                 rows={4}
-                className="w-full rounded-md border border-border bg-white px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+                className="input-base w-full rounded-lg border border-border bg-white px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-y"
                 placeholder="System prompt for Gemini image analysis..."
               />
 
@@ -392,7 +392,7 @@ export function GenerationSettings() {
                 {!showSavePreset ? (
                   <button
                     onClick={() => setShowSavePreset(true)}
-                    className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-500 transition-colors"
+                    className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors"
                   >
                     <Save className="h-3 w-3" />
                     שמור כפריסט
@@ -414,7 +414,7 @@ export function GenerationSettings() {
                     <button
                       onClick={handleSaveGeminiPreset}
                       disabled={!presetName.trim()}
-                      className="text-xs text-violet-600 hover:text-violet-500 disabled:opacity-50 font-medium"
+                      className="text-xs text-accent hover:text-accent/80 disabled:opacity-50 font-medium"
                     >
                       שמור
                     </button>

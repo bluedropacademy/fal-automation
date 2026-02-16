@@ -77,9 +77,9 @@ export function ImageLightbox({
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute -top-10 left-0 text-white hover:text-gray-300"
+          className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-full bg-white/10 p-2 text-white backdrop-blur-sm hover:bg-white/20 transition-colors"
         >
-          <X className="h-6 w-6" />
+          <X className="h-5 w-5" />
         </button>
 
         {/* Image with loading indicator */}
@@ -104,7 +104,7 @@ export function ImageLightbox({
           {currentCompletedIdx > 0 && (
             <button
               onClick={goPrev}
-              className="mr-2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
+              className="mr-2 rounded-full bg-black/50 p-2.5 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
             >
               <ChevronRight className="h-5 w-5" />
             </button>
@@ -114,7 +114,7 @@ export function ImageLightbox({
           {currentCompletedIdx < completedImages.length - 1 && (
             <button
               onClick={goNext}
-              className="ml-2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
+              className="ml-2 rounded-full bg-black/50 p-2.5 text-white backdrop-blur-sm hover:bg-black/70 transition-colors"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>

@@ -3,9 +3,9 @@
 import type { ImageStatus } from "@/types/batch";
 
 const statusConfig: Record<ImageStatus, { label: string; className: string }> = {
-  pending: { label: "ממתין", className: "bg-gray-100 text-gray-600" },
+  pending: { label: "ממתין", className: "bg-muted text-muted-foreground" },
   queued: { label: "בתור", className: "bg-blue-100 text-blue-700" },
-  processing: { label: "מייצר...", className: "bg-indigo-100 text-indigo-700 animate-pulse" },
+  processing: { label: "מייצר...", className: "bg-primary/10 text-primary animate-pulse" },
   completed: { label: "הושלם", className: "bg-green-100 text-green-700" },
   failed: { label: "נכשל", className: "bg-red-100 text-red-700" },
   editing: { label: "עורך...", className: "bg-amber-100 text-amber-700 animate-pulse" },

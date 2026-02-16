@@ -21,14 +21,14 @@ export function CollapsibleSection({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm">
+    <div className="rounded-xl border border-border/80 bg-card shadow-[var(--shadow-card)]">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-5 py-3 text-start"
+        className="flex w-full items-center justify-between px-5 py-3.5 text-start hover:bg-muted/30 transition-colors rounded-t-xl"
       >
         <div className="flex items-center gap-2">
-          {icon && <span className="text-primary">{icon}</span>}
+          {icon && <span className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10 text-primary">{icon}</span>}
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
           {!open && badge && (
             <span className="text-xs text-muted-foreground">{badge}</span>
@@ -46,7 +46,7 @@ export function CollapsibleSection({
         }`}
       >
         <div className="overflow-hidden">
-          <div className="border-t border-border px-5 py-4">{children}</div>
+          <div className="border-t border-border/60 px-5 py-4 animate-fade-in">{children}</div>
         </div>
       </div>
     </div>

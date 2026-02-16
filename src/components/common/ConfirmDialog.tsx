@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { X } from "lucide-react";
 
 interface ConfirmDialogProps {
@@ -21,6 +22,15 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [open, onCancel]);
+
   if (!open) return null;
 
   return (
@@ -28,7 +38,7 @@ export function ConfirmDialog({
       <div className="animate-modal-in w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl relative">
         <button
           onClick={onCancel}
-          className="absolute top-4 left-4 text-muted-foreground hover:text-foreground transition-colors"
+          className="absolute top-4 left-4 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
         >
           <X className="h-4 w-4" />
         </button>

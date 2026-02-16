@@ -65,7 +65,7 @@ export function PromptEditor() {
                   dispatch({ type: "SET_SETTINGS", settings: { promptPrefix: e.target.value } })
                 }
                 placeholder="photorealistic, 8K, detailed"
-                className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                className="input-base w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
 
@@ -81,7 +81,7 @@ export function PromptEditor() {
                   dispatch({ type: "SET_SETTINGS", settings: { promptSuffix: e.target.value } })
                 }
                 placeholder="cinematic lighting, high quality"
-                className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                className="input-base w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
 
@@ -115,7 +115,7 @@ export function PromptEditor() {
           onChange={(e) => handleTextChange(e.target.value)}
           placeholder={"a cat sitting on a windowsill\nsunset over the ocean\n# this is a comment (will be skipped)\na mountain landscape at dawn"}
           rows={12}
-          className="w-full rounded-md border border-border bg-white px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+          className="input-base w-full rounded-md border border-border bg-white px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-y"
         />
         <p className="mt-1 text-xs text-muted-foreground">
           שורות ריקות ושורות שמתחילות ב-# יידלגו
@@ -123,7 +123,7 @@ export function PromptEditor() {
       </div>
 
       {/* Cost summary */}
-      <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+      <div className="flex items-center justify-between rounded-xl border border-primary/20 bg-gradient-to-l from-primary/5 to-transparent px-4 py-3 text-sm">
         <div className="flex items-center gap-2">
           <Calculator className="h-4 w-4 text-primary" />
           <span>

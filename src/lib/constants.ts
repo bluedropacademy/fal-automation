@@ -108,6 +108,7 @@ export function estimateCost(
 }
 
 // Video generation config
+export const MAX_ACTIVE_VIDEO_TASKS = 2;
 export const VIDEO_DURATIONS = ["6", "10"] as const;
 export const VIDEO_RESOLUTIONS = ["768P", "1080P"] as const;
 

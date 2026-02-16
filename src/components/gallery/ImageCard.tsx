@@ -23,7 +23,7 @@ export function ImageCard({ image, onClick, onEdit, selectable, selected, onTogg
       onClick={image.status === "completed" ? onClick : undefined}
       className={`card-interactive group relative overflow-hidden rounded-xl border bg-card ${
         image.status === "completed"
-          ? "border-border cursor-pointer hover:shadow-lg hover:border-primary/50"
+          ? "border-border/80 cursor-pointer hover:shadow-[var(--shadow-card-hover)] hover:border-primary/40"
           : image.status === "editing"
             ? "border-amber-400 animate-pulse-border-amber"
             : image.status === "processing"
@@ -44,8 +44,8 @@ export function ImageCard({ image, onClick, onEdit, selectable, selected, onTogg
               src={proxyImageUrl(image.result.url)}
               alt={image.rawPrompt}
               loading="lazy"
-              className={`h-full w-full object-cover transition-all duration-300 ${
-                image.status === "completed" ? "group-hover:scale-105" : ""
+              className={`h-full w-full object-cover transition-all duration-500 ease-out ${
+                image.status === "completed" ? "group-hover:scale-[1.07]" : ""
               } ${loaded ? "opacity-100" : "opacity-0"}`}
               onLoad={() => setLoaded(true)}
             />
@@ -83,7 +83,7 @@ export function ImageCard({ image, onClick, onEdit, selectable, selected, onTogg
       {/* Version Badge (hidden in selection mode to avoid overlap) */}
       {!selectable && (image.versionLabel || (image.versions && image.versions.length > 1)) && (
         <div className="absolute top-1.5 right-1.5">
-          <span className="rounded-full bg-primary/90 px-2 py-0.5 text-[10px] font-bold text-white">
+          <span className="rounded-full bg-primary/90 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
             {image.versionLabel
               ? image.versionLabel
               : `V${image.currentVersion ?? image.versions!.length}`}
@@ -115,7 +115,7 @@ export function ImageCard({ image, onClick, onEdit, selectable, selected, onTogg
             e.stopPropagation();
             onEdit();
           }}
-          className="absolute bottom-12 left-1.5 opacity-0 group-hover:opacity-100 transition-opacity rounded-md bg-black/60 p-1.5 text-white hover:bg-black/80"
+          className="absolute bottom-12 left-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200 rounded-lg bg-black/60 p-2 text-white hover:bg-black/80 backdrop-blur-sm"
           title="ערוך תמונה"
         >
           <Pencil className="h-3.5 w-3.5" />
@@ -123,7 +123,7 @@ export function ImageCard({ image, onClick, onEdit, selectable, selected, onTogg
       )}
 
       {/* Info Footer */}
-      <div className="px-3 py-2.5">
+      <div className="px-3 py-2.5 border-t border-border/40">
         <p className="truncate text-sm text-foreground" title={image.rawPrompt}>
           {image.rawPrompt}
         </p>

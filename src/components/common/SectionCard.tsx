@@ -23,13 +23,13 @@ export function SectionCard({
 }: SectionCardProps) {
   return (
     <div
-      className={`rounded-xl border border-border bg-card shadow-sm ${className ?? ""}`}
+      className={`rounded-xl border border-border/80 bg-card shadow-[var(--shadow-card)] ${className ?? ""}`}
     >
       {title && (
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+        <div className="flex items-center justify-between border-b border-border/60 px-5 py-3.5">
           <div className="flex items-center gap-2">
             {icon && (
-              <span className="text-primary">{icon}</span>
+              <span className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10 text-primary">{icon}</span>
             )}
             <div>
               <h3 className="text-sm font-semibold text-foreground">

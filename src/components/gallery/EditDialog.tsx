@@ -344,10 +344,10 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
                 <button
                   key={mode.value}
                   onClick={() => setEditMode(mode.value)}
-                  className={`flex items-start gap-3 rounded-lg border p-3 text-right transition-colors ${
+                  className={`flex items-start gap-3 rounded-xl border p-3 text-right transition-colors ${
                     editMode === mode.value
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-gray-300"
+                      ? "border-primary bg-primary/5 ring-1 ring-primary/20 shadow-sm"
+                      : "border-border hover:border-primary/30 hover:bg-muted/30"
                   }`}
                 >
                   <Icon
@@ -382,7 +382,7 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
                 : "make him smile"
             }
             rows={2}
-            className="w-full rounded-md border border-border bg-white px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+            className="input-base w-full rounded-md border border-border bg-white px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-y"
           />
           {editMode === "parallel" && (
             <p className="mt-1 text-xs text-muted-foreground">
@@ -403,7 +403,7 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
               onChange={(e) => setVariableValues(e.target.value)}
               placeholder={"happy\nsad\ntired\nexcited"}
               rows={4}
-              className="w-full rounded-md border border-border bg-white px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+              className="input-base w-full rounded-md border border-border bg-white px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary resize-y"
             />
             <p className="mt-1 text-xs text-muted-foreground">
               {variableValues.split("\n").filter((v) => v.trim()).length} וריאציות
@@ -416,7 +416,7 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
           <button
             onClick={handleSubmit}
             disabled={!prompt.trim()}
-            className="flex-1 flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm shadow-primary/20"
           >
             <Pencil className="h-4 w-4" />
             {editMode === "parallel"

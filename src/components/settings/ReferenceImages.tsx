@@ -70,7 +70,7 @@ export function ReferenceImages() {
       <div
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
-        className="flex cursor-pointer items-center justify-center rounded-md border-2 border-dashed border-border p-4 hover:border-primary/50 transition-colors"
+        className="flex cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-border/60 p-6 hover:border-primary/50 hover:bg-primary/[0.02] transition-colors"
         onClick={() => {
           const input = document.createElement("input");
           input.type = "file";
@@ -83,8 +83,10 @@ export function ReferenceImages() {
         {uploading ? (
           <span className="text-xs text-muted-foreground">מעלה...</span>
         ) : (
-          <div className="flex flex-col items-center gap-1">
-            <Upload className="h-5 w-5 text-muted-foreground" />
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted/70">
+              <Upload className="h-5 w-5 text-muted-foreground" />
+            </div>
             <span className="text-xs text-muted-foreground">גרור תמונות או לחץ להעלאה</span>
           </div>
         )}
@@ -94,7 +96,7 @@ export function ReferenceImages() {
       {referenceUrls.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {referenceUrls.map((url, i) => (
-            <div key={i} className="group relative h-14 w-14 overflow-hidden rounded-md border border-border">
+            <div key={i} className="group relative h-16 w-16 overflow-hidden rounded-lg border border-border shadow-sm">
               <img src={url} alt={`ref ${i + 1}`} className="h-full w-full object-cover" />
               <button
                 onClick={() => handleRemove(i)}

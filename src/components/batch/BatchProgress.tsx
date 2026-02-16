@@ -62,7 +62,7 @@ export function BatchProgress() {
         : "bg-gradient-to-l from-indigo-500 to-indigo-400";
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+    <div className="rounded-xl border border-border/80 bg-card p-5 shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-semibold text-foreground">
           {statusLabels[batch.status] ?? ""}
@@ -72,9 +72,9 @@ export function BatchProgress() {
         </span>
       </div>
 
-      <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
+      <div className="h-3.5 w-full overflow-hidden rounded-full bg-muted/70">
         <div
-          className={`h-full rounded-full transition-all duration-300 ${barColor} ${
+          className={`h-full rounded-full transition-all duration-500 ease-out ${barColor} ${
             isRunning ? "progress-bar-animated" : ""
           }`}
           style={{ width: `${stats.percentage}%` }}

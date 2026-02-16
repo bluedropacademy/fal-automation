@@ -63,10 +63,10 @@ export function BatchHistory() {
   };
 
   return (
-    <div>
+    <div className="rounded-xl border border-border/80 bg-card shadow-[var(--shadow-card)]">
       <button
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between text-sm font-semibold text-foreground"
+        className="flex w-full items-center justify-between px-5 py-3.5 text-sm font-semibold text-foreground hover:bg-muted/30 transition-colors rounded-xl"
       >
         <span>היסטוריית באצ׳ים ({batches.length})</span>
         {open ? (
@@ -77,7 +77,7 @@ export function BatchHistory() {
       </button>
 
       {open && (
-        <div className="mt-2 flex flex-col gap-1.5 max-h-64 overflow-y-auto">
+        <div className="border-t border-border/60 px-4 py-3 flex flex-col gap-1.5 max-h-64 overflow-y-auto">
           {state.viewingHistory && (
             <button
               onClick={handleBack}
@@ -104,7 +104,7 @@ export function BatchHistory() {
                 }`}
               >
                 {batch.type === "video" ? (
-                  <Video className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-500" />
+                  <Video className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
                 ) : (
                   <Images className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 )}
@@ -112,7 +112,7 @@ export function BatchHistory() {
                   <p className="truncate text-xs font-medium text-foreground">
                     {batch.name}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[11px] text-muted-foreground">
                     {completedCount}/{batch.images.length} {batch.type === "video" ? "סרטונים" : "תמונות"}
                     {" · "}
                     {statusLabel[batch.status] ?? batch.status}

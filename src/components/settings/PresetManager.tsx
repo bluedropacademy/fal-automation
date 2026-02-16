@@ -61,7 +61,7 @@ export function PresetManager() {
       <select
         value={selectedPreset}
         onChange={(e) => handleLoad(e.target.value)}
-        className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm focus:border-primary focus:outline-none"
+        className="input-base w-full rounded-lg border border-border bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
       >
         <option value="">-- בחר פריסט --</option>
         {presets.map((p) => (
@@ -77,7 +77,7 @@ export function PresetManager() {
             setPresetName("");
             setShowSaveDialog(true);
           }}
-          className="flex flex-1 items-center justify-center gap-1 rounded-md bg-muted px-2 py-1.5 text-xs font-medium hover:bg-gray-200 transition-colors"
+          className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border/50 bg-muted px-2 py-2 text-xs font-medium hover:bg-muted/70 transition-colors"
         >
           <Save className="h-3.5 w-3.5" />
           שמור
@@ -85,7 +85,7 @@ export function PresetManager() {
         <button
           onClick={() => setShowDeleteDialog(true)}
           disabled={!selectedPreset}
-          className="flex flex-1 items-center justify-center gap-1 rounded-md bg-muted px-2 py-1.5 text-xs font-medium hover:bg-gray-200 disabled:opacity-40 transition-colors"
+          className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border/50 bg-muted px-2 py-2 text-xs font-medium hover:bg-muted/70 disabled:opacity-40 transition-colors"
         >
           <Trash2 className="h-3.5 w-3.5" />
           מחק
@@ -104,13 +104,13 @@ export function PresetManager() {
               placeholder="שם הפריסט"
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && handleSave()}
-              className="mt-3 w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="input-base mt-3 w-full rounded-lg border border-border px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <div className="mt-5 flex gap-3">
               <button
                 onClick={handleSave}
                 disabled={!presetName.trim()}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-600 disabled:opacity-50 transition-colors"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
                 שמור
               </button>
