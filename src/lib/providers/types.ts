@@ -42,9 +42,17 @@ export interface VideoGenerateInput {
   imageUrl: string;
   duration: "6" | "10";
   resolution: "768P" | "1080P";
+  model?: string;
 }
 
 export interface VideoGenerateResult {
   videoUrl: string;
   taskId: string;
+}
+
+export interface VideoTaskStatus {
+  taskId: string;
+  state: "waiting" | "queuing" | "generating" | "success" | "fail" | "error";
+  videoUrl?: string;
+  error?: string;
 }

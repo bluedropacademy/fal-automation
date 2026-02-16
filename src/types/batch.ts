@@ -41,15 +41,29 @@ export interface BatchImage {
   sourceImageIndex?: number;
   /** Edit label for images created from edits (e.g. "V2", "V3") */
   versionLabel?: string;
+  /** URL of generated video (for video batches) */
+  videoUrl?: string;
+  /** URL of the source image used for video generation */
+  sourceImageUrl?: string;
+}
+
+export type BatchType = "image" | "video";
+
+export interface VideoSettings {
+  duration: string;
+  resolution: string;
+  model: string;
 }
 
 export interface Batch {
   id: string;
   name: string;
+  type: BatchType;
   status: BatchStatus;
   images: BatchImage[];
   settings: import("./generation").GenerationSettings;
   createdAt: string;
   completedAt?: string;
   estimatedCost: number;
+  videoSettings?: VideoSettings;
 }

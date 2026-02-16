@@ -1,5 +1,5 @@
-import { KIE_MODEL_TEXT_TO_IMAGE, KIE_MODEL_IMAGE_EDIT, KIE_MODEL_IMAGE_TO_VIDEO, KIE_POLL_INTERVAL_MS, KIE_MAX_POLL_ATTEMPTS } from "@/lib/constants";
-import type { ImageProvider, ProviderGenerateInput, ProviderGenerateResult, OnStatusUpdate, VideoGenerateInput, VideoGenerateResult } from "./types";
+import { KIE_MODEL_TEXT_TO_IMAGE, KIE_MODEL_IMAGE_EDIT, KIE_MODEL_IMAGE_TO_VIDEO_PRO, KIE_POLL_INTERVAL_MS, KIE_MAX_POLL_ATTEMPTS } from "@/lib/constants";
+import type { ImageProvider, ProviderGenerateInput, ProviderGenerateResult, OnStatusUpdate, VideoGenerateInput, VideoGenerateResult, VideoTaskStatus } from "./types";
 
 const KIE_API_BASE = "https://api.kie.ai/api/v1/jobs";
 
@@ -19,11 +19,43 @@ function mapOutputFormat(format: string): string {
   return format;
 }
 
+function parseResultJson(raw: unknown): Record<string, unknown> {
+  if (typeof raw === "string") {
+    return JSON.parse(raw);
+  } else if (raw && typeof raw === "object") {
+    return raw as Record<string, unknown>;
+  }
+  throw new Error(`Unexpected resultJson type: ${typeof raw}`);
+}
+
+function extractVideoUrl(resultJson: unknown): string {
+  const data = parseResultJson(resultJson);
+  const url =
+    (data.video_url as string) ??
+    (data.videoUrl as string) ??
+    (data.url as string) ??
+    (data.resultUrls as string[])?.[0] ??
+    (data.result_urls as string[])?.[0] ??
+    null;
+  if (!url) {
+    throw new Error(`No video URL found. Keys: ${Object.keys(data).join(", ")}`);
+  }
+  return url;
+}
+
 export class KieProvider implements ImageProvider {
   async generateImage(
     input: ProviderGenerateInput,
     onStatusUpdate?: OnStatusUpdate
   ): Promise<ProviderGenerateResult> {
+    // If reference images exist, route to edit model
+    if (input.referenceImageUrls && input.referenceImageUrls.length > 0) {
+      return this.editImage(
+        { ...input, imageUrls: input.referenceImageUrls },
+        onStatusUpdate
+      );
+    }
+
     const kieInput: Record<string, unknown> = {
       prompt: input.prompt,
       resolution: input.resolution,
@@ -64,7 +96,7 @@ export class KieProvider implements ImageProvider {
         Authorization: `Bearer ${getKieKey()}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model: KIE_MODEL_IMAGE_TO_VIDEO, input: kieInput }),
+      body: JSON.stringify({ model: input.model || KIE_MODEL_IMAGE_TO_VIDEO_PRO, input: kieInput }),
     });
 
     if (!createRes.ok) {
@@ -117,33 +149,7 @@ export class KieProvider implements ImageProvider {
       if (state === "generating") {
         onStatusUpdate?.("processing");
       } else if (state === "success") {
-        let resultData: Record<string, unknown>;
-        const raw = pollData.data.resultJson;
-        if (typeof raw === "string") {
-          try {
-            resultData = JSON.parse(raw);
-          } catch {
-            throw new Error(`Kie AI video returned invalid resultJson`);
-          }
-        } else if (raw && typeof raw === "object") {
-          resultData = raw as Record<string, unknown>;
-        } else {
-          throw new Error(`Kie AI video returned unexpected resultJson type: ${typeof raw}`);
-        }
-
-        const videoUrl =
-          (resultData.video_url as string) ??
-          (resultData.videoUrl as string) ??
-          (resultData.url as string) ??
-          (resultData.resultUrls as string[])?.[0] ??
-          (resultData.result_urls as string[])?.[0] ??
-          null;
-
-        if (!videoUrl) {
-          console.error(`[Kie] Video no URL in resultJson:`, JSON.stringify(resultData));
-          throw new Error(`Kie AI video success but no URL. Keys: ${Object.keys(resultData).join(", ")}`);
-        }
-
+        const videoUrl = extractVideoUrl(pollData.data.resultJson);
         console.log(`[Kie] Video task ${taskId} completed`);
         return { videoUrl, taskId };
       } else if (state === "fail") {
@@ -156,6 +162,77 @@ export class KieProvider implements ImageProvider {
     throw new Error(
       `Kie AI video timed out after ${(KIE_MAX_POLL_ATTEMPTS * KIE_POLL_INTERVAL_MS) / 1000}s`
     );
+  }
+
+  /** Create a video task on Kie AI without polling. Returns taskId immediately. */
+  async createVideoTask(input: VideoGenerateInput): Promise<{ taskId: string }> {
+    const kieInput: Record<string, unknown> = {
+      prompt: input.prompt,
+      image_url: input.imageUrl,
+      duration: input.duration,
+      resolution: input.resolution,
+    };
+
+    const createRes = await fetch(`${KIE_API_BASE}/createTask`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${getKieKey()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model: input.model || KIE_MODEL_IMAGE_TO_VIDEO_PRO, input: kieInput }),
+    });
+
+    if (!createRes.ok) {
+      const errText = await createRes.text();
+      throw new Error(`Kie AI createTask failed (${createRes.status}): ${errText}`);
+    }
+
+    const createData = await createRes.json();
+    if (createData.code !== 200) {
+      throw new Error(`Kie AI createTask error: ${createData.msg}`);
+    }
+
+    const taskId = createData.data.taskId as string;
+    console.log(`[Kie] Video task created: ${taskId}`);
+    return { taskId };
+  }
+
+  /** Check the status of a single Kie AI task. Returns immediately. */
+  async pollVideoTask(taskId: string): Promise<VideoTaskStatus> {
+    let pollRes: Response;
+    try {
+      pollRes = await fetch(
+        `${KIE_API_BASE}/recordInfo?taskId=${encodeURIComponent(taskId)}`,
+        { headers: { Authorization: `Bearer ${getKieKey()}` } }
+      );
+    } catch (err) {
+      return { taskId, state: "error", error: err instanceof Error ? err.message : "Network error" };
+    }
+
+    if (!pollRes.ok) {
+      return { taskId, state: "error", error: `HTTP ${pollRes.status}` };
+    }
+
+    const pollData = await pollRes.json();
+    const state = pollData.data?.state as string | undefined;
+
+    if (state === "success") {
+      try {
+        const videoUrl = extractVideoUrl(pollData.data.resultJson);
+        return { taskId, state: "success", videoUrl };
+      } catch (err) {
+        return { taskId, state: "error", error: err instanceof Error ? err.message : "Failed to extract video URL" };
+      }
+    } else if (state === "fail") {
+      return {
+        taskId,
+        state: "fail",
+        error: `${pollData.data.failMsg ?? "Unknown error"} (code: ${pollData.data.failCode})`,
+      };
+    }
+
+    // "waiting", "queuing", "generating"
+    return { taskId, state: (state as VideoTaskStatus["state"]) || "waiting" };
   }
 
   private async createAndPoll(

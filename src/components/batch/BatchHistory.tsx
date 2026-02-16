@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronUp, Trash2, Images, ArrowRight } from "lucide-react";
+import { ChevronDown, ChevronUp, Trash2, Images, Video, ArrowRight } from "lucide-react";
 import { useBatch } from "@/hooks/useBatch";
 import { loadBatchHistory, deleteBatchFromHistory } from "@/lib/persistence";
 import type { Batch } from "@/types/batch";
@@ -10,6 +10,11 @@ export function BatchHistory() {
   const { state, dispatch, hydrated } = useBatch();
   const [batches, setBatches] = useState<Batch[]>([]);
   const [open, setOpen] = useState(false);
+
+  const refreshHistory = useCallback(async () => {
+    const history = await loadBatchHistory();
+    setBatches(history);
+  }, []);
 
   // Load history on mount and when current batch status changes (archiving)
   useEffect(() => {
@@ -21,10 +26,12 @@ export function BatchHistory() {
     return () => { cancelled = true; };
   }, [hydrated, state.currentBatch?.status]);
 
-  const refreshHistory = useCallback(async () => {
-    const history = await loadBatchHistory();
-    setBatches(history);
-  }, []);
+  // Refresh when video batches are saved (fires custom event from VideoDialog)
+  useEffect(() => {
+    const handler = () => { refreshHistory(); };
+    window.addEventListener("videoBatchSaved", handler);
+    return () => window.removeEventListener("videoBatchSaved", handler);
+  }, [refreshHistory]);
 
   const handleLoad = useCallback(
     (batch: Batch) => {
@@ -96,13 +103,17 @@ export function BatchHistory() {
                     : "border-border hover:border-primary/30 hover:bg-muted/50"
                 }`}
               >
-                <Images className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                {batch.type === "video" ? (
+                  <Video className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-500" />
+                ) : (
+                  <Images className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                )}
                 <div className="flex-1 min-w-0">
                   <p className="truncate text-xs font-medium text-foreground">
                     {batch.name}
                   </p>
                   <p className="text-[10px] text-muted-foreground">
-                    {completedCount}/{batch.images.length} תמונות
+                    {completedCount}/{batch.images.length} {batch.type === "video" ? "סרטונים" : "תמונות"}
                     {" · "}
                     {statusLabel[batch.status] ?? batch.status}
                     {" · "}

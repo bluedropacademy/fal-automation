@@ -188,6 +188,7 @@ export function useGenerationStream() {
       const batch: Batch = {
         id: batchId,
         name: batchName,
+        type: "image",
         status: "running",
         images,
         settings,

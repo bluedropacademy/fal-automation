@@ -164,6 +164,7 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
     };
 
     dispatch({ type: "ADD_IMAGES", images: [placeholder] });
+    requestAnimationFrame(() => flushSave());
     onClose();
 
     // Fire-and-forget
@@ -191,6 +192,7 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
             completedAt: new Date().toISOString(),
           },
         });
+        requestAnimationFrame(() => flushSave());
         toast.success(`שכפול הושלם — ${vLabel}`);
       })
       .catch((error) => {
@@ -240,6 +242,7 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
     });
 
     dispatch({ type: "ADD_IMAGES", images: placeholders });
+    requestAnimationFrame(() => flushSave());
     onClose();
     toast.info(`מייצר ${variations.length} וריאציות...`);
 
@@ -273,6 +276,8 @@ export function EditDialog({ image, onClose }: EditDialogProps) {
             });
           }
         );
+
+        requestAnimationFrame(() => flushSave());
 
         const successCount = data.results.length;
         const errorCount = data.errors?.length ?? 0;

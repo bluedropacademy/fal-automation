@@ -9,6 +9,8 @@ import {
   loadCurrentBatch,
   clearCurrentBatch,
   archiveBatch,
+  saveTerminalBatch,
+  saveBatchToHistory,
   saveSettings,
   loadSettings,
 } from "@/lib/persistence";
@@ -206,6 +208,10 @@ export function BatchProvider({ children }: { children: ReactNode }) {
 
         // If a batch was "running" when we last saved, it means the connection was lost
         let batch = savedBatch;
+        // Backfill type for batches saved before video support
+        if (batch && !batch.type) {
+          batch = { ...batch, type: "image" };
+        }
         if (batch && batch.status === "running") {
           batch = { ...batch, status: "interrupted" };
         }
@@ -235,17 +241,32 @@ export function BatchProvider({ children }: { children: ReactNode }) {
     hydrate();
   }, []);
 
-  // Keep a ref to the latest batch so beforeunload can access it synchronously
+  // Keep refs to the latest batch and viewingHistory so beforeunload/flushSave
+  // can access them synchronously
   const batchRef = useRef(state.currentBatch);
   batchRef.current = state.currentBatch;
 
-  // Persist batch state on changes (debounced) — skip when viewing history
+  const viewingHistoryRef = useRef(state.viewingHistory);
+  viewingHistoryRef.current = state.viewingHistory;
+
+  // Persist batch state on changes (debounced).
+  // When viewing history: save edits to the history key only.
+  // When not viewing history: save to currentBatch (and also history if terminal).
   useEffect(() => {
-    if (!hydrated || state.viewingHistory) return;
+    if (!hydrated) return;
     const timeout = setTimeout(() => {
       if (state.currentBatch) {
-        saveCurrentBatch(state.currentBatch);
-      } else {
+        const isTerminal = ["completed", "cancelled", "error", "interrupted"].includes(
+          state.currentBatch.status
+        );
+        if (state.viewingHistory) {
+          if (isTerminal) saveBatchToHistory(state.currentBatch);
+        } else if (isTerminal) {
+          saveTerminalBatch(state.currentBatch);
+        } else {
+          saveCurrentBatch(state.currentBatch);
+        }
+      } else if (!state.viewingHistory) {
         clearCurrentBatch();
       }
     }, 300);
@@ -255,8 +276,15 @@ export function BatchProvider({ children }: { children: ReactNode }) {
   // Force-save on page unload to prevent data loss from debounce
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (batchRef.current) {
-        saveCurrentBatch(batchRef.current);
+      const batch = batchRef.current;
+      if (!batch) return;
+      const isTerminal = ["completed", "cancelled", "error", "interrupted"].includes(batch.status);
+      if (viewingHistoryRef.current) {
+        if (isTerminal) saveBatchToHistory(batch);
+      } else if (isTerminal) {
+        saveTerminalBatch(batch);
+      } else {
+        saveCurrentBatch(batch);
       }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -265,8 +293,15 @@ export function BatchProvider({ children }: { children: ReactNode }) {
 
   // Immediate save — call after critical state changes (e.g. version updates)
   const flushSave = () => {
-    if (batchRef.current) {
-      saveCurrentBatch(batchRef.current);
+    const batch = batchRef.current;
+    if (!batch) return;
+    const isTerminal = ["completed", "cancelled", "error", "interrupted"].includes(batch.status);
+    if (viewingHistoryRef.current) {
+      if (isTerminal) saveBatchToHistory(batch);
+    } else if (isTerminal) {
+      saveTerminalBatch(batch);
+    } else {
+      saveCurrentBatch(batch);
     }
   };
 
@@ -276,14 +311,23 @@ export function BatchProvider({ children }: { children: ReactNode }) {
     saveSettings(state.settings);
   }, [state.settings, hydrated]);
 
-  // Archive finished batches to history (completed, cancelled, error, interrupted)
+  // Archive finished batches to history when status first becomes terminal.
+  // Track last archived batch ID + status to avoid redundant writes
+  // (subsequent edits are persisted by the debounced save / flushSave instead).
+  const archivedRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!hydrated || !state.currentBatch) return;
-    const status = state.currentBatch.status;
-    if (status === "completed" || status === "cancelled" || status === "error" || status === "interrupted") {
-      archiveBatch(state.currentBatch);
-    }
-  }, [state.currentBatch?.status, hydrated]);
+    const { id, status } = state.currentBatch;
+    const isTerminal = status === "completed" || status === "cancelled" || status === "error" || status === "interrupted";
+    if (!isTerminal) return;
+
+    const archiveKey = `${id}:${status}`;
+    if (archivedRef.current === archiveKey) return;
+
+    archivedRef.current = archiveKey;
+    archiveBatch(state.currentBatch);
+  }, [state.currentBatch?.status, state.currentBatch?.id, hydrated]);
 
   return (
     <BatchContext.Provider value={{ state, dispatch, hydrated, flushSave }}>

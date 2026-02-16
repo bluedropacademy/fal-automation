@@ -9,12 +9,21 @@ import { PromptEditor } from "@/components/batch/PromptEditor";
 import { BatchControls } from "@/components/batch/BatchControls";
 import { BatchProgress } from "@/components/batch/BatchProgress";
 import { ImageGallery } from "@/components/gallery/ImageGallery";
+import { VideoGallery } from "@/components/gallery/VideoGallery";
 import { GenerationSettings } from "@/components/settings/GenerationSettings";
 import { PresetManager } from "@/components/settings/PresetManager";
 import { ReferenceImages } from "@/components/settings/ReferenceImages";
 import { BatchHistory } from "@/components/batch/BatchHistory";
 import { useBatch } from "@/hooks/useBatch";
 import { parsePrompts } from "@/lib/constants";
+
+function GallerySwitch() {
+  const { state } = useBatch();
+  if (state.currentBatch?.type === "video") {
+    return <VideoGallery />;
+  }
+  return <ImageGallery />;
+}
 
 function WorkflowSteps() {
   const { state } = useBatch();
@@ -99,7 +108,7 @@ export default function Home() {
 
             <BatchProgress />
 
-            <ImageGallery />
+            <GallerySwitch />
           </div>
         </main>
 

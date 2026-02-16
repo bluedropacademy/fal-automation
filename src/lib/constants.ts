@@ -33,13 +33,18 @@ export const FAL_MODEL_IMAGE_EDIT = "fal-ai/nano-banana-pro/edit";
 // Kie AI models
 export const KIE_MODEL_TEXT_TO_IMAGE = "nano-banana-pro";
 export const KIE_MODEL_IMAGE_EDIT = "google/nano-banana-edit";
-export const KIE_MODEL_IMAGE_TO_VIDEO = "hailuo/2-3-image-to-video-pro";
+export const KIE_MODEL_IMAGE_TO_VIDEO_PRO = "hailuo/2-3-image-to-video-pro";
+export const KIE_MODEL_IMAGE_TO_VIDEO_STANDARD = "hailuo/2-3-image-to-video-standard";
 
 // Kie AI polling config
 export const KIE_POLL_INTERVAL_MS = 2000;
 export const KIE_MAX_POLL_ATTEMPTS = 150;
 
 export const MAX_CONCURRENCY = 4;
+
+// Client-side video polling config
+export const VIDEO_POLL_INTERVAL_MS = 4000;
+export const VIDEO_POLL_MAX_DURATION_MS = 600000;
 
 // Gemini Vision config
 export const GEMINI_MODEL = "gemini-2.0-flash";
@@ -110,15 +115,35 @@ export function isVideoConfigValid(duration: string, resolution: string): boolea
   return !(duration === "10" && resolution === "1080P");
 }
 
+// Kie AI video pricing (USD per video)
+// Source: https://kie.ai/hailuo-2-3
+export type VideoModel = "pro" | "standard";
+
+export const VIDEO_PRICING_PRO: Record<string, number> = {
+  "6_768P":  0.22,   // 45 credits
+  "10_768P": 0.45,   // 90 credits
+  "6_1080P": 0.39,   // 80 credits
+};
+
+export const VIDEO_PRICING_STANDARD: Record<string, number> = {
+  "6_768P":  0.15,   // 30 credits
+  "10_768P": 0.26,   // 50 credits
+  "6_1080P": 0.26,   // 50 credits
+};
+
+export function getVideoModelId(model: VideoModel): string {
+  return model === "pro" ? KIE_MODEL_IMAGE_TO_VIDEO_PRO : KIE_MODEL_IMAGE_TO_VIDEO_STANDARD;
+}
+
 export function estimateVideoCost(
   count: number,
   duration: string,
-  resolution: string
+  resolution: string,
+  model: VideoModel = "pro"
 ): number {
-  // Approximate pricing per video (USD)
-  let perVideo = 0.50;
-  if (resolution === "1080P") perVideo = 0.80;
-  else if (duration === "10") perVideo = 0.80;
+  const key = `${duration}_${resolution}`;
+  const pricingTable = model === "pro" ? VIDEO_PRICING_PRO : VIDEO_PRICING_STANDARD;
+  const perVideo = pricingTable[key] ?? 0.39;
   return count * perVideo * USD_TO_ILS;
 }
 

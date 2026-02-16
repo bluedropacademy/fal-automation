@@ -25,8 +25,25 @@ export async function clearCurrentBatch(): Promise<void> {
 // --- Batch History ---
 
 export async function archiveBatch(batch: Batch): Promise<void> {
+  // Save to history only. Do NOT delete fal:currentBatch — the debounced save
+  // or RESET_BATCH → clearCurrentBatch() handles that when the user starts a new batch.
   await set(`${BATCH_HISTORY_PREFIX}${batch.id}`, batch);
-  await del(CURRENT_BATCH_KEY);
+}
+
+/**
+ * Dual-save: writes to both fal:currentBatch AND fal:batch:{id}.
+ * Used for any save of a terminal-status batch so edits persist in history.
+ */
+export async function saveTerminalBatch(batch: Batch): Promise<void> {
+  await Promise.all([
+    set(CURRENT_BATCH_KEY, batch),
+    set(`${BATCH_HISTORY_PREFIX}${batch.id}`, batch),
+  ]);
+}
+
+/** Save a batch directly to history without affecting currentBatch (used for video batches). */
+export async function saveBatchToHistory(batch: Batch): Promise<void> {
+  await set(`${BATCH_HISTORY_PREFIX}${batch.id}`, batch);
 }
 
 export async function loadBatchHistory(): Promise<Batch[]> {
@@ -37,7 +54,12 @@ export async function loadBatchHistory(): Promise<Batch[]> {
   const batches: Batch[] = [];
   for (const key of batchKeys) {
     const batch = await get(key);
-    if (batch) batches.push(batch as Batch);
+    if (batch) {
+      const b = batch as Batch;
+      // Backfill type for batches saved before video support
+      if (!b.type) b.type = "image";
+      batches.push(b);
+    }
   }
   return batches.sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()

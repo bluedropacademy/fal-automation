@@ -120,16 +120,64 @@ export function VideoDialog({ images, onClose }: VideoDialogProps) {
     };
   }, []);
 
+  // --- Persist video batch to history ---
+
+  const persistBatch = useCallback(async (
+    batchResults: VideoResult[],
+    batchStatus: "running" | "completed" | "error" | "interrupted",
+    batch: Batch
+  ) => {
+    const mapStatus = (resultStatus: string, fallback: BatchImage["status"]): BatchImage["status"] => {
+      switch (resultStatus) {
+        case "completed": return "completed";
+        case "failed": return "failed";
+        case "queued": return "queued";
+        case "processing": return "processing";
+        case "creating": return "queued";
+        default: return fallback;
+      }
+    };
+    const updatedImages: BatchImage[] = batch.images.map((img) => {
+      const result = batchResults.find((r) => r.imageIndex === img.index);
+      if (!result) return img;
+      return {
+        ...img,
+        status: mapStatus(result.status, img.status),
+        videoUrl: result.videoUrl,
+        requestId: result.taskId,
+        error: result.error,
+        completedAt: result.status === "completed" ? new Date().toISOString() : undefined,
+      };
+    });
+
+    const finalBatch: Batch = {
+      ...batch,
+      status: batchStatus,
+      images: updatedImages,
+      ...(batchStatus !== "running" && { completedAt: new Date().toISOString() }),
+    };
+
+    videoBatchRef.current = finalBatch;
+    await saveBatchToHistory(finalBatch);
+    window.dispatchEvent(new Event("videoBatchSaved"));
+  }, []);
+
   // --- Close helper: always synchronous ---
 
   const handleClose = useCallback(() => {
     stoppedRef.current = true;
+    pendingQueueRef.current = [];
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
+    // Save interrupted state if generation was active
+    const batch = videoBatchRef.current;
+    if (batch && status === "generating") {
+      persistBatch(resultsRef.current, "interrupted", batch);
+    }
     onClose();
-  }, [onClose]);
+  }, [onClose, status, persistBatch]);
 
   // --- Per-image prompt helpers ---
 
@@ -250,38 +298,6 @@ export function VideoDialog({ images, onClose }: VideoDialogProps) {
     },
     [localSystemPrompt]
   );
-
-  // --- Persist video batch to history ---
-
-  const persistBatch = useCallback(async (
-    batchResults: VideoResult[],
-    batchStatus: "running" | "completed" | "error" | "interrupted",
-    batch: Batch
-  ) => {
-    const updatedImages: BatchImage[] = batch.images.map((img) => {
-      const result = batchResults.find((r) => r.imageIndex === img.index);
-      if (!result) return img;
-      return {
-        ...img,
-        status: result.status === "completed" ? "completed" as const : result.status === "failed" ? "failed" as const : img.status,
-        videoUrl: result.videoUrl,
-        requestId: result.taskId,
-        error: result.error,
-        completedAt: result.status === "completed" ? new Date().toISOString() : undefined,
-      };
-    });
-
-    const finalBatch: Batch = {
-      ...batch,
-      status: batchStatus,
-      images: updatedImages,
-      ...(batchStatus !== "running" && { completedAt: new Date().toISOString() }),
-    };
-
-    videoBatchRef.current = finalBatch;
-    await saveBatchToHistory(finalBatch);
-    window.dispatchEvent(new Event("videoBatchSaved"));
-  }, []);
 
   // --- Create a single task on Kie AI ---
 
