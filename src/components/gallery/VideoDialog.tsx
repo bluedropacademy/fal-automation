@@ -114,7 +114,7 @@ export function VideoDialog({ images, onClose }: VideoDialogProps) {
     return () => {
       stoppedRef.current = true;
       if (pollingRef.current) {
-        clearInterval(pollingRef.current);
+        clearTimeout(pollingRef.current);
         pollingRef.current = null;
       }
     };
@@ -168,7 +168,7 @@ export function VideoDialog({ images, onClose }: VideoDialogProps) {
     stoppedRef.current = true;
     pendingQueueRef.current = [];
     if (pollingRef.current) {
-      clearInterval(pollingRef.current);
+      clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
     // Save interrupted state if generation was active
@@ -393,14 +393,25 @@ export function VideoDialog({ images, onClose }: VideoDialogProps) {
   }, [createTask]);
 
   // --- Polling logic ---
+  // Uses setTimeout (not setInterval) to guarantee each cycle completes
+  // before the next starts — prevents race conditions from overlapping polls.
 
   const startPolling = useCallback((batch: Batch) => {
-    if (pollingRef.current) clearInterval(pollingRef.current);
+    if (pollingRef.current) {
+      clearTimeout(pollingRef.current);
+      pollingRef.current = null;
+    }
     pollStartTimeRef.current = Date.now();
 
-    const poll = async () => {
+    const scheduleNext = () => {
+      if (stoppedRef.current) return;
+      pollingRef.current = setTimeout(pollOnce, VIDEO_POLL_INTERVAL_MS);
+    };
+
+    const pollOnce = async () => {
       if (stoppedRef.current) return;
 
+      // Always read the LATEST results from ref (no stale closure)
       const latest = resultsRef.current;
 
       // Check if ALL items are done (completed or failed, including pending ones with no taskId)
@@ -409,10 +420,7 @@ export function VideoDialog({ images, onClose }: VideoDialogProps) {
       ) && pendingQueueRef.current.length === 0;
 
       if (allDone) {
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
-        }
+        pollingRef.current = null;
         setStatus("completed");
         await persistBatch(latest, "completed", batch);
         toast.success("יצירת הוידאו הושלמה!");
@@ -421,10 +429,7 @@ export function VideoDialog({ images, onClose }: VideoDialogProps) {
 
       // Check max duration
       if (Date.now() - pollStartTimeRef.current > VIDEO_POLL_MAX_DURATION_MS) {
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
-        }
+        pollingRef.current = null;
         setStatus("interrupted");
         await persistBatch(latest, "interrupted", batch);
         toast.info("הזמן המקסימלי למעקב עבר — ניתן להמשיך מההיסטוריה");
@@ -442,8 +447,9 @@ export function VideoDialog({ images, onClose }: VideoDialogProps) {
         try {
           const res = await fetch(`/api/generate-video/poll?taskIds=${taskIds}`);
           if (!res.ok) {
-            // Fill slots anyway in case some tasks finished creation
+            console.warn(`[VideoDialog] Poll API returned ${res.status}`);
             await fillSlots();
+            scheduleNext();
             return;
           }
 
@@ -461,6 +467,9 @@ export function VideoDialog({ images, onClose }: VideoDialogProps) {
             } else if (pollResult.state === "fail" && r.status !== "failed") {
               anyChanged = true;
               return { ...r, status: "failed" as const, error: pollResult.error };
+            } else if (pollResult.state === "error" && r.status !== "failed") {
+              // Transient error from poll — log but keep polling (will retry next cycle)
+              console.warn(`[VideoDialog] Poll returned error for task ${r.taskId}: ${pollResult.error}`);
             } else if (pollResult.state === "generating" && r.status !== "processing") {
               anyChanged = true;
               return { ...r, status: "processing" as const };
@@ -476,18 +485,20 @@ export function VideoDialog({ images, onClose }: VideoDialogProps) {
             resultsRef.current = nextResults;
             await persistBatch(nextResults, "running", batch);
           }
-        } catch {
-          // Network error — skip this cycle
+        } catch (err) {
+          console.warn("[VideoDialog] Poll network error:", err);
         }
       }
 
       // Fill slots: create new tasks if active count dropped below MAX_ACTIVE_TASKS
       await fillSlots();
+
+      // Schedule next poll AFTER this cycle fully completes
+      scheduleNext();
     };
 
-    // Poll immediately, then on interval
-    poll();
-    pollingRef.current = setInterval(poll, VIDEO_POLL_INTERVAL_MS);
+    // Poll immediately, then sequential scheduling
+    pollOnce();
   }, [persistBatch, fillSlots]);
 
   // --- Video generation ---
@@ -560,7 +571,7 @@ export function VideoDialog({ images, onClose }: VideoDialogProps) {
     stoppedRef.current = true;
     pendingQueueRef.current = [];
     if (pollingRef.current) {
-      clearInterval(pollingRef.current);
+      clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
     setStatus("interrupted");

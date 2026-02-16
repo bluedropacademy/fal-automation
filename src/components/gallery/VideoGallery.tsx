@@ -24,7 +24,7 @@ export function VideoGallery() {
   useEffect(() => {
     return () => {
       if (pollingRef.current) {
-        clearInterval(pollingRef.current);
+        clearTimeout(pollingRef.current);
         pollingRef.current = null;
       }
     };
@@ -62,6 +62,8 @@ export function VideoGallery() {
     setLiveStatuses(next);
   }, []);
 
+  const stoppedRef = useRef(false);
+
   const handleResume = useCallback(async () => {
     if (!batch) return;
 
@@ -78,11 +80,13 @@ export function VideoGallery() {
     }
 
     setResuming(true);
+    stoppedRef.current = false;
     const pollStartTime = Date.now();
 
     const stopPolling = () => {
+      stoppedRef.current = true;
       if (pollingRef.current) {
-        clearInterval(pollingRef.current);
+        clearTimeout(pollingRef.current);
         pollingRef.current = null;
       }
       setResuming(false);
@@ -111,7 +115,14 @@ export function VideoGallery() {
       window.dispatchEvent(new Event("videoBatchSaved"));
     };
 
-    const poll = async () => {
+    const scheduleNext = () => {
+      if (stoppedRef.current) return;
+      pollingRef.current = setTimeout(pollOnce, VIDEO_POLL_INTERVAL_MS);
+    };
+
+    const pollOnce = async () => {
+      if (stoppedRef.current) return;
+
       // Read from ref — always has the latest data
       const currentStatuses = liveStatusesRef.current;
 
@@ -143,7 +154,10 @@ export function VideoGallery() {
 
       try {
         const res = await fetch(`/api/generate-video/poll?taskIds=${taskIds}`);
-        if (!res.ok) return;
+        if (!res.ok) {
+          scheduleNext();
+          return;
+        }
         const data = await res.json();
 
         for (const result of data.results ?? []) {
@@ -154,25 +168,30 @@ export function VideoGallery() {
             updateLiveStatus(img.index, { status: "completed", videoUrl: result.videoUrl });
           } else if (result.state === "fail") {
             updateLiveStatus(img.index, { status: "failed", error: result.error });
+          } else if (result.state === "error") {
+            console.warn(`[VideoGallery] Poll error for task ${result.taskId}: ${result.error}`);
           } else if (result.state === "generating") {
             if (currentStatuses.get(img.index)?.status !== "processing") {
               updateLiveStatus(img.index, { status: "processing" });
             }
           }
         }
-      } catch {
-        // Skip this cycle
+      } catch (err) {
+        console.warn("[VideoGallery] Poll network error:", err);
       }
+
+      // Schedule next poll AFTER this cycle completes
+      scheduleNext();
     };
 
-    // Poll immediately, then on interval
-    poll();
-    pollingRef.current = setInterval(poll, VIDEO_POLL_INTERVAL_MS);
+    // Poll immediately, then sequential scheduling
+    pollOnce();
   }, [batch, updateLiveStatus]);
 
   const handleCancelResume = useCallback(() => {
+    stoppedRef.current = true;
     if (pollingRef.current) {
-      clearInterval(pollingRef.current);
+      clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
     setResuming(false);
