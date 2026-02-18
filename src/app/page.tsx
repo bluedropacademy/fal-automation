@@ -17,6 +17,16 @@ import { BatchHistory } from "@/components/batch/BatchHistory";
 import { useBatch } from "@/hooks/useBatch";
 import { parsePrompts } from "@/lib/constants";
 
+function PresetBadge() {
+  const { state } = useBatch();
+  if (!state.activePresetName) return null;
+  return (
+    <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-medium text-primary truncate max-w-[120px]">
+      {state.activePresetName}{state.presetModified ? " *" : ""}
+    </span>
+  );
+}
+
 function GallerySwitch() {
   const { state } = useBatch();
   if (state.currentBatch?.type === "video") {
@@ -120,6 +130,7 @@ export default function Home() {
           <CollapsibleSection
             title="פריסטים"
             icon={<Bookmark className="h-4 w-4" />}
+            badge={<PresetBadge />}
             defaultOpen={false}
           >
             <PresetManager />

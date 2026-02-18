@@ -14,6 +14,7 @@
     "@google/genai": "^1.41.0",
     "@supabase/supabase-js": "^2.96.0",
     "@types/archiver": "^7.0.0",
+    "@upstash/qstash": "^2.9.0",
     "@upstash/redis": "^1.36.2",
     "archiver": "^7.0.1",
     "idb-keyval": "^6.2.2",

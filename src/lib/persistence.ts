@@ -80,6 +80,38 @@ export async function loadSettings(): Promise<GenerationSettings | null> {
   return (await get(SETTINGS_KEY)) ?? null;
 }
 
+// --- Active Preset ---
+
+const ACTIVE_PRESET_KEY = "fal:activePreset";
+
+export async function saveActivePreset(name: string | null): Promise<void> {
+  if (name === null) {
+    await del(ACTIVE_PRESET_KEY);
+  } else {
+    await set(ACTIVE_PRESET_KEY, name);
+  }
+}
+
+export async function loadActivePreset(): Promise<string | null> {
+  return (await get(ACTIVE_PRESET_KEY)) ?? null;
+}
+
+// --- Active QStash Batch ---
+
+const ACTIVE_QSTASH_BATCH_KEY = "fal:activeQStashBatch";
+
+export async function saveActiveQStashBatchId(batchId: string | null): Promise<void> {
+  if (batchId === null) {
+    await del(ACTIVE_QSTASH_BATCH_KEY);
+  } else {
+    await set(ACTIVE_QSTASH_BATCH_KEY, batchId);
+  }
+}
+
+export async function loadActiveQStashBatchId(): Promise<string | null> {
+  return (await get(ACTIVE_QSTASH_BATCH_KEY)) ?? null;
+}
+
 // --- Gemini Prompt Presets ---
 
 const GEMINI_PRESETS_KEY = "fal:geminiPresets";

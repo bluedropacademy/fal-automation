@@ -1,14 +1,21 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useEffect } from "react";
 import { useBatchContext } from "@/context/BatchContext";
 import type { GenerationEvent, GenerationRequest } from "@/types/generation";
 import type { Batch, BatchImage } from "@/types/batch";
 import { generateBatchId, uid } from "@/lib/format-utils";
 import { estimateCost } from "@/lib/constants";
+import { saveActiveQStashBatchId } from "@/lib/persistence";
 import { toast } from "sonner";
 import { useWakeLock } from "./useWakeLock";
 import { useSleepDetector } from "./useSleepDetector";
+import type { BatchProgress } from "@/types/qstash";
+
+type Mode = "sse" | "qstash";
+
+const POLL_INTERVAL_ACTIVE = 3000;
+const POLL_INTERVAL_SLOW = 5000;
 
 /**
  * Process SSE stream from /api/generate.
@@ -72,16 +79,16 @@ function processSSEStream(
 export function useGenerationStream() {
   const { state, dispatch } = useBatchContext();
   const abortControllerRef = useRef<AbortController | null>(null);
+  const modeRef = useRef<Mode>("sse");
+  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollingBatchIdRef = useRef<string | null>(null);
   const isRunning = state.currentBatch?.status === "running";
 
   // Prevent sleep during active generation
   useWakeLock(isRunning ?? false);
 
-  /**
-   * Reconcile client state with server logs.
-   * Catches images that completed/failed on the server but whose SSE events were lost.
-   * Returns "completed" if all images are done, "interrupted" otherwise.
-   */
+  // --- SSE reconciliation (same as before) ---
+
   const reconcileWithServer = useCallback(
     async (batch: Batch): Promise<"completed" | "interrupted"> => {
       try {
@@ -91,7 +98,6 @@ export function useGenerationStream() {
         );
         const data = await res.json();
 
-        // Update images that completed on server but client doesn't know about
         for (const completed of data.completedIndices) {
           const img = batch.images[completed.index];
           if (img && img.status !== "completed") {
@@ -112,7 +118,6 @@ export function useGenerationStream() {
           }
         }
 
-        // Update images that failed on server but client shows as still pending/processing
         for (const failed of data.failedIndices) {
           const failedIndex = typeof failed === "number" ? failed : failed.index;
           const failedError = typeof failed === "number" ? "נכשל בצד השרת" : (failed.error ?? "נכשל בצד השרת");
@@ -146,10 +151,16 @@ export function useGenerationStream() {
     [dispatch]
   );
 
-  // Detect sleep/wake and reconcile state
+  // Detect sleep/wake — in SSE mode reconcile, in QStash mode just poll
   const handleSleepDetected = useCallback(async () => {
     if (!state.currentBatch || state.currentBatch.status !== "running") return;
 
+    if (modeRef.current === "qstash") {
+      // QStash: jobs continue in the background, just poll again
+      return;
+    }
+
+    // SSE mode: reconcile
     const result = await reconcileWithServer(state.currentBatch);
     if (result === "completed") {
       toast.info("הבאצ׳ הושלם בזמן שהמחשב ישן");
@@ -166,6 +177,194 @@ export function useGenerationStream() {
     enabled: isRunning ?? false,
     threshold: 10000,
   });
+
+  // --- QStash polling ---
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearTimeout(pollingRef.current);
+      pollingRef.current = null;
+    }
+    pollingBatchIdRef.current = null;
+  }, []);
+
+  const pollOnce = useCallback(
+    async (batchId: string): Promise<boolean> => {
+      try {
+        const res = await fetch(`/api/batch/progress?batchId=${batchId}`);
+        if (!res.ok) return false;
+        const progress: BatchProgress = await res.json();
+
+        for (const [indexStr, imgState] of Object.entries(progress.images)) {
+          const index = Number(indexStr);
+          const update: Partial<BatchImage> = { status: imgState.status };
+
+          if (imgState.result) update.result = imgState.result;
+          if (imgState.seed !== undefined) update.seed = imgState.seed;
+          if (imgState.requestId) update.requestId = imgState.requestId;
+          if (imgState.error) update.error = imgState.error;
+          if (imgState.durationMs !== undefined) update.durationMs = imgState.durationMs;
+          if (imgState.status === "completed" || imgState.status === "failed") {
+            update.completedAt = new Date().toISOString();
+          }
+
+          dispatch({ type: "UPDATE_IMAGE", index, update });
+        }
+
+        if (progress.status === "completed") {
+          dispatch({ type: "SET_BATCH_STATUS", status: "completed" });
+          await saveActiveQStashBatchId(null);
+          return true;
+        }
+
+        return false;
+      } catch (error) {
+        console.error("[QStash poll] Error:", error);
+        return false;
+      }
+    },
+    [dispatch]
+  );
+
+  const startPolling = useCallback(
+    (batchId: string) => {
+      pollingBatchIdRef.current = batchId;
+
+      const poll = async () => {
+        if (pollingBatchIdRef.current !== batchId) return;
+
+        const done = await pollOnce(batchId);
+        if (done) {
+          pollingRef.current = null;
+          return;
+        }
+
+        // Smart interval
+        const batch = state.currentBatch;
+        const hasPending = batch?.images.some(
+          (img) => img.status === "pending" || img.status === "queued"
+        );
+        const interval = hasPending ? POLL_INTERVAL_ACTIVE : POLL_INTERVAL_SLOW;
+        pollingRef.current = setTimeout(poll, interval);
+      };
+
+      poll();
+    },
+    [pollOnce, state.currentBatch]
+  );
+
+  // --- QStash start ---
+
+  const startViaQStash = useCallback(
+    async (batchId: string, batchName: string, prompts: string[], batch: Batch) => {
+      modeRef.current = "qstash";
+
+      try {
+        const res = await fetch("/api/batch/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            batchId,
+            batchName,
+            prompts,
+            settings: batch.settings,
+          }),
+        });
+
+        if (res.status === 501) {
+          // QStash not configured — return false to fall back to SSE
+          return false;
+        }
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Server error: ${res.status}`);
+        }
+
+        // Save for reconnect after browser close
+        await saveActiveQStashBatchId(batchId);
+
+        // Mark all as queued
+        for (let i = 0; i < prompts.length; i++) {
+          dispatch({
+            type: "UPDATE_IMAGE",
+            index: i,
+            update: { status: "queued", startedAt: new Date().toISOString() },
+          });
+        }
+
+        // Start polling
+        startPolling(batchId);
+        return true;
+      } catch (error) {
+        dispatch({ type: "SET_BATCH_STATUS", status: "error" });
+        toast.error("שגיאה בהפעלת הבאצ׳", {
+          description: error instanceof Error ? error.message : "שגיאה לא ידועה",
+        });
+        return true; // Don't fall back to SSE on real errors
+      }
+    },
+    [dispatch, startPolling]
+  );
+
+  // --- SSE start ---
+
+  const startViaSSE = useCallback(
+    async (batchId: string, prompts: string[], batch: Batch) => {
+      modeRef.current = "sse";
+
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+
+      const request: GenerationRequest = {
+        batchId,
+        prompts,
+        settings: batch.settings,
+      };
+
+      try {
+        const response = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request),
+          signal: abortController.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Server error: ${response.status}`);
+        }
+
+        const reader = response.body!.getReader();
+        const batchComplete = await processSSEStream(reader, dispatch);
+
+        if (!batchComplete) {
+          const result = await reconcileWithServer(batch);
+          if (result === "interrupted") {
+            toast.warning("החיבור לשרת נותק", {
+              description: "חלק מהתמונות הושלמו. ניתן להמשיך את הבאצ׳.",
+              duration: 10000,
+            });
+          }
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
+          await reconcileWithServer(batch);
+        } else {
+          await reconcileWithServer(batch);
+          toast.warning("החיבור לשרת נותק", {
+            description: error instanceof Error ? error.message : "שגיאה לא ידועה",
+            duration: 10000,
+          });
+        }
+      } finally {
+        abortControllerRef.current = null;
+      }
+    },
+    [dispatch, reconcileWithServer]
+  );
+
+  // --- Public API ---
 
   const startGeneration = useCallback(
     async (prompts: string[]) => {
@@ -204,81 +403,47 @@ export function useGenerationStream() {
 
       dispatch({ type: "START_BATCH", batch });
 
-      const abortController = new AbortController();
-      abortControllerRef.current = abortController;
-
-      const request: GenerationRequest = {
-        batchId,
-        prompts,
-        settings,
-      };
-
-      try {
-        const response = await fetch("/api/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(request),
-          signal: abortController.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Server error: ${response.status}`);
-        }
-
-        const reader = response.body!.getReader();
-        const batchComplete = await processSSEStream(reader, dispatch);
-
-        // Stream ended without batch_complete → reconcile with server logs
-        if (!batchComplete) {
-          const result = await reconcileWithServer(batch);
-          if (result === "interrupted") {
-            toast.warning("החיבור לשרת נותק", {
-              description: "חלק מהתמונות הושלמו. ניתן להמשיך את הבאצ׳.",
-              duration: 10000,
-            });
-          }
-        }
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          // User paused — set interrupted so they can resume
-          dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
-          // Reconcile to catch any in-flight completions
-          await reconcileWithServer(batch);
-        } else {
-          // Connection error — reconcile and mark interrupted
-          await reconcileWithServer(batch);
-          toast.warning("החיבור לשרת נותק", {
-            description: error instanceof Error ? error.message : "שגיאה לא ידועה",
-            duration: 10000,
-          });
-        }
-      } finally {
-        abortControllerRef.current = null;
+      // Try QStash first; if 501 (not configured), fall back to SSE
+      const usedQStash = await startViaQStash(batchId, batchName, prompts, batch);
+      if (!usedQStash) {
+        await startViaSSE(batchId, prompts, batch);
       }
     },
-    [state, dispatch, reconcileWithServer]
+    [state, dispatch, startViaQStash, startViaSSE]
   );
 
   const pauseGeneration = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
+    if (modeRef.current === "qstash") {
+      // QStash: stop polling (jobs still run in background)
+      stopPolling();
+      dispatch({ type: "SET_BATCH_STATUS", status: "interrupted" });
+    } else {
+      // SSE: abort the fetch
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
     }
-  }, []);
+  }, [stopPolling, dispatch]);
 
   const resumeGeneration = useCallback(async () => {
     if (!state.currentBatch) return;
-
     const batch = state.currentBatch;
 
-    // First reconcile with server to catch any images that completed but we missed
+    if (modeRef.current === "qstash") {
+      // QStash: just resume polling — jobs are still running in the background
+      dispatch({ type: "SET_BATCH_STATUS", status: "running" });
+      await saveActiveQStashBatchId(batch.id);
+      startPolling(batch.id);
+      return;
+    }
+
+    // SSE mode: reconcile and re-send pending prompts
     await reconcileWithServer(batch);
 
-    // Re-read batch state after reconciliation (use fresh reference)
     const freshBatch = state.currentBatch;
     if (!freshBatch) return;
 
-    // Include failed, pending, queued, and stuck processing images in resume
     const retryableImages = freshBatch.images.filter(
       (img) => img.status === "pending" || img.status === "queued" || img.status === "failed" || img.status === "processing"
     );
@@ -289,7 +454,6 @@ export function useGenerationStream() {
       return;
     }
 
-    // Reset failed/stuck images to pending before retrying
     for (const img of retryableImages) {
       if (img.status === "failed" || img.status === "processing") {
         dispatch({
@@ -305,7 +469,6 @@ export function useGenerationStream() {
       }
     }
 
-    // Map from new sequential indices (0,1,2...) to actual batch indices
     const indexMap = new Map<number, number>();
     const pendingPrompts: string[] = [];
     retryableImages.forEach((img, seqIdx) => {
@@ -339,7 +502,6 @@ export function useGenerationStream() {
       const reader = response.body!.getReader();
       const batchComplete = await processSSEStream(reader, dispatch, indexMap);
 
-      // Stream ended without batch_complete → reconcile
       if (!batchComplete) {
         const result = await reconcileWithServer(batch);
         if (result === "interrupted") {
@@ -363,7 +525,70 @@ export function useGenerationStream() {
     } finally {
       abortControllerRef.current = null;
     }
-  }, [state.currentBatch, dispatch, reconcileWithServer]);
+  }, [state.currentBatch, dispatch, reconcileWithServer, startPolling, stopPolling]);
 
-  return { startGeneration, pauseGeneration, resumeGeneration };
+  /** Reconnect to a QStash batch after browser was closed */
+  const reconnectQStashBatch = useCallback(
+    async (batchId: string) => {
+      modeRef.current = "qstash";
+
+      try {
+        const res = await fetch(`/api/batch/progress?batchId=${batchId}`);
+        if (!res.ok) {
+          await saveActiveQStashBatchId(null);
+          return;
+        }
+
+        const progress: BatchProgress = await res.json();
+
+        if (progress.status === "completed") {
+          // Batch finished while browser was closed — update UI
+          for (const [indexStr, imgState] of Object.entries(progress.images)) {
+            const index = Number(indexStr);
+            dispatch({
+              type: "UPDATE_IMAGE",
+              index,
+              update: {
+                status: imgState.status,
+                ...(imgState.result && { result: imgState.result }),
+                ...(imgState.seed !== undefined && { seed: imgState.seed }),
+                ...(imgState.requestId && { requestId: imgState.requestId }),
+                ...(imgState.error && { error: imgState.error }),
+                ...(imgState.durationMs !== undefined && { durationMs: imgState.durationMs }),
+                completedAt: new Date().toISOString(),
+              },
+            });
+          }
+          dispatch({ type: "SET_BATCH_STATUS", status: "completed" });
+          await saveActiveQStashBatchId(null);
+          toast.info("הבאצ׳ הושלם בזמן שהדפדפן היה סגור");
+          return;
+        }
+
+        // Batch still running — start polling
+        dispatch({ type: "SET_BATCH_STATUS", status: "running" });
+        startPolling(batchId);
+        toast.info("מתחבר מחדש לבאצ׳ פעיל...");
+      } catch {
+        await saveActiveQStashBatchId(null);
+      }
+    },
+    [dispatch, startPolling]
+  );
+
+  // --- Auto-reconnect QStash batch after hydration ---
+
+  const reconnectedRef = useRef(false);
+
+  useEffect(() => {
+    if (reconnectedRef.current) return;
+    if (!state.pendingQStashBatchId) return;
+
+    reconnectedRef.current = true;
+    const batchId = state.pendingQStashBatchId;
+    dispatch({ type: "CLEAR_QSTASH_RECONNECT" });
+    reconnectQStashBatch(batchId);
+  }, [state.pendingQStashBatchId, dispatch, reconnectQStashBatch]);
+
+  return { startGeneration, pauseGeneration, resumeGeneration, reconnectQStashBatch };
 }

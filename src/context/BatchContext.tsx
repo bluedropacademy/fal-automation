@@ -13,6 +13,9 @@ import {
   saveBatchToHistory,
   saveSettings,
   loadSettings,
+  saveActivePreset,
+  loadActivePreset,
+  loadActiveQStashBatchId,
 } from "@/lib/persistence";
 
 interface BatchState {
@@ -22,13 +25,18 @@ interface BatchState {
   currentBatch: Batch | null;
   savedBatch: Batch | null;
   viewingHistory: boolean;
+  activePresetName: string | null;
+  presetModified: boolean;
+  /** Set during hydration if a QStash batch was running when browser closed */
+  pendingQStashBatchId: string | null;
 }
 
 type BatchAction =
   | { type: "SET_PROMPTS"; prompts: string[] }
   | { type: "SET_BATCH_NAME"; name: string }
   | { type: "SET_SETTINGS"; settings: Partial<GenerationSettings> }
-  | { type: "LOAD_SETTINGS"; settings: GenerationSettings }
+  | { type: "LOAD_SETTINGS"; settings: GenerationSettings; presetName?: string }
+  | { type: "SET_ACTIVE_PRESET"; name: string | null }
   | { type: "START_BATCH"; batch: Batch }
   | { type: "UPDATE_IMAGE"; index: number; update: Partial<BatchImage> }
   | { type: "SET_BATCH_STATUS"; status: BatchStatus }
@@ -38,7 +46,8 @@ type BatchAction =
   | { type: "SET_IMAGE_VERSION"; index: number; versionNumber: number }
   | { type: "VIEW_HISTORY_BATCH"; batch: Batch }
   | { type: "BACK_TO_CURRENT" }
-  | { type: "HYDRATE"; currentBatch: Batch | null; settings?: GenerationSettings };
+  | { type: "HYDRATE"; currentBatch: Batch | null; settings?: GenerationSettings; activePresetName?: string | null; pendingQStashBatchId?: string | null }
+  | { type: "CLEAR_QSTASH_RECONNECT" };
 
 function batchReducer(state: BatchState, action: BatchAction): BatchState {
   switch (action.type) {
@@ -49,10 +58,18 @@ function batchReducer(state: BatchState, action: BatchAction): BatchState {
       return { ...state, batchName: action.name };
 
     case "SET_SETTINGS":
-      return { ...state, settings: { ...state.settings, ...action.settings } };
+      return { ...state, settings: { ...state.settings, ...action.settings }, presetModified: state.activePresetName !== null };
 
     case "LOAD_SETTINGS":
-      return { ...state, settings: { ...DEFAULT_SETTINGS, ...action.settings } };
+      return {
+        ...state,
+        settings: { ...DEFAULT_SETTINGS, ...action.settings },
+        activePresetName: action.presetName ?? state.activePresetName,
+        presetModified: false,
+      };
+
+    case "SET_ACTIVE_PRESET":
+      return { ...state, activePresetName: action.name, presetModified: false };
 
     case "START_BATCH":
       return { ...state, currentBatch: action.batch };
@@ -170,7 +187,12 @@ function batchReducer(state: BatchState, action: BatchAction): BatchState {
         ...state,
         currentBatch: action.currentBatch,
         ...(action.settings ? { settings: action.settings } : {}),
+        ...(action.activePresetName !== undefined ? { activePresetName: action.activePresetName } : {}),
+        pendingQStashBatchId: action.pendingQStashBatchId ?? null,
       };
+
+    case "CLEAR_QSTASH_RECONNECT":
+      return { ...state, pendingQStashBatchId: null };
 
     default:
       return state;
@@ -184,6 +206,9 @@ const initialState: BatchState = {
   currentBatch: null,
   savedBatch: null,
   viewingHistory: false,
+  activePresetName: null,
+  presetModified: false,
+  pendingQStashBatchId: null,
 };
 
 const BatchContext = createContext<{
@@ -201,9 +226,11 @@ export function BatchProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function hydrate() {
       try {
-        const [savedBatch, savedSettings] = await Promise.all([
+        const [savedBatch, savedSettings, savedActivePreset, savedQStashBatchId] = await Promise.all([
           loadCurrentBatch(),
           loadSettings(),
+          loadActivePreset(),
+          loadActiveQStashBatchId(),
         ]);
 
         // If a batch was "running" when we last saved, it means the connection was lost
@@ -213,7 +240,12 @@ export function BatchProvider({ children }: { children: ReactNode }) {
           batch = { ...batch, type: "image" };
         }
         if (batch && batch.status === "running") {
-          batch = { ...batch, status: "interrupted" };
+          // If this batch is running via QStash, keep it as "running" — the hook will reconnect
+          if (savedQStashBatchId && batch.id === savedQStashBatchId) {
+            // Keep running — QStash is still processing in the background
+          } else {
+            batch = { ...batch, status: "interrupted" };
+          }
         }
 
         // Revert any images stuck in "editing" status (edit API call lost on reload)
@@ -232,6 +264,8 @@ export function BatchProvider({ children }: { children: ReactNode }) {
           settings: savedSettings
             ? { ...DEFAULT_SETTINGS, ...savedSettings }
             : undefined,
+          activePresetName: savedActivePreset,
+          pendingQStashBatchId: savedQStashBatchId,
         });
       } catch {
         // IndexedDB not available, continue with defaults
@@ -310,6 +344,12 @@ export function BatchProvider({ children }: { children: ReactNode }) {
     if (!hydrated) return;
     saveSettings(state.settings);
   }, [state.settings, hydrated]);
+
+  // Persist active preset name on changes
+  useEffect(() => {
+    if (!hydrated) return;
+    saveActivePreset(state.activePresetName);
+  }, [state.activePresetName, hydrated]);
 
   // Archive finished batches to history when status first becomes terminal.
   // Track last archived batch ID + status to avoid redundant writes
