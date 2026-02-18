@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProvider } from "@/lib/providers";
+import { persistFile } from "@/lib/supabase-storage";
 import type { Provider } from "@/types/generation";
 
 export const maxDuration = 300;
@@ -66,10 +67,11 @@ async function handleSingleEdit(body: EditRequestBody) {
   });
 
   const image = result.images[0];
+  const permanentUrl = await persistFile(image.url, "edits", image.contentType);
 
   return NextResponse.json({
     image: {
-      url: image.url,
+      url: permanentUrl ?? image.url,
       contentType: image.contentType,
       width: image.width,
       height: image.height,
@@ -98,12 +100,13 @@ async function handleParallelEdit(body: ParallelEditRequestBody) {
       });
 
       const image = result.images[0];
+      const permanentUrl = await persistFile(image.url, "edits", image.contentType);
 
       return {
         label: variation.label,
         prompt: variation.prompt,
         image: {
-          url: image.url,
+          url: permanentUrl ?? image.url,
           contentType: image.contentType,
           width: image.width,
           height: image.height,

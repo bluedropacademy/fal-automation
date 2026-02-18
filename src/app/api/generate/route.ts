@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { appendLog } from "@/lib/file-utils";
 import { PRICING, KIE_PRICING, WEB_SEARCH_ADDON_PRICE, USD_TO_ILS, MAX_CONCURRENCY } from "@/lib/constants";
 import { getProvider } from "@/lib/providers";
+import { persistFile } from "@/lib/supabase-storage";
 import type { GenerationRequest, GenerationEvent } from "@/types/generation";
 import type { LogEntry } from "@/types/log";
 
@@ -59,13 +60,15 @@ export async function POST(request: NextRequest) {
 
           const durationMs = Date.now() - startTime;
           const image = result.images[0];
+          const permanentUrl = await persistFile(image.url, "images", image.contentType);
+          const finalUrl = permanentUrl ?? image.url;
 
           sendEvent({
             type: "image_update",
             index: i,
             status: "completed",
             image: {
-              url: image.url,
+              url: finalUrl,
               contentType: image.contentType,
               width: image.width,
               height: image.height,
@@ -93,7 +96,7 @@ export async function POST(request: NextRequest) {
             },
             status: "completed",
             durationMs,
-            resultUrl: image.url,
+            resultUrl: finalUrl,
             width: image.width,
             height: image.height,
             requestId: result.requestId,

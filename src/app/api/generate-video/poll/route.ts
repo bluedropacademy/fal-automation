@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { KieProvider } from "@/lib/providers/kie-provider";
+import { persistFile } from "@/lib/supabase-storage";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
   const taskIdsParam = request.nextUrl.searchParams.get("taskIds");
@@ -20,5 +21,15 @@ export async function GET(request: NextRequest) {
     taskIds.map((taskId) => provider.pollVideoTask(taskId))
   );
 
-  return NextResponse.json({ results });
+  const persistedResults = await Promise.all(
+    results.map(async (result) => {
+      if (result.state === "success" && result.videoUrl) {
+        const permanentUrl = await persistFile(result.videoUrl, "videos", "video/mp4");
+        return { ...result, videoUrl: permanentUrl ?? result.videoUrl };
+      }
+      return result;
+    })
+  );
+
+  return NextResponse.json({ results: persistedResults });
 }

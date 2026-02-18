@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fal } from "@/lib/fal-server";
+import { uploadFile } from "@/lib/supabase-storage";
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,7 +10,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    const url = await fal.storage.upload(file);
+    const url = await uploadFile(file, "uploads");
+    if (!url) {
+      // Fallback to fal.storage if Supabase upload fails
+      const { fal } = await import("@/lib/fal-server");
+      const falUrl = await fal.storage.upload(file);
+      return NextResponse.json({ url: falUrl });
+    }
 
     return NextResponse.json({ url });
   } catch (error) {

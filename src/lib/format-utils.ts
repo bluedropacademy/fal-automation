@@ -31,6 +31,9 @@ export function formatCostILS(costUSD: number, rate: number): string {
 }
 
 export function proxyImageUrl(url: string): string {
+  if (url.includes(".supabase.co/storage/")) {
+    return url;
+  }
   return `/api/image-proxy?url=${encodeURIComponent(url)}`;
 }
 

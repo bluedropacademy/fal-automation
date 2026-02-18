@@ -12,6 +12,7 @@
     "@fal-ai/client": "^1.9.0",
     "@fal-ai/server-proxy": "^1.2.0",
     "@google/genai": "^1.41.0",
+    "@supabase/supabase-js": "^2.96.0",
     "@types/archiver": "^7.0.0",
     "@upstash/redis": "^1.36.2",
     "archiver": "^7.0.1",
