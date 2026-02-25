@@ -91,6 +91,8 @@ export function VideoGallery() {
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stoppedRef = useRef(false);
   const pollStartTimeRef = useRef(0);
+  const pollOnceRef = useRef<(() => void) | null>(null);
+  const videoPollingInFlightRef = useRef(false);
   const autoStartedRef = useRef<string | null>(null);
   const batchRef = useRef(batch);
   batchRef.current = batch;
@@ -420,89 +422,96 @@ export function VideoGallery() {
 
     const pollOnce = async () => {
       if (stoppedRef.current) return;
+      if (videoPollingInFlightRef.current) return;
+      videoPollingInFlightRef.current = true;
 
-      if (Date.now() - pollStartTimeRef.current > VIDEO_POLL_MAX_DURATION_MS) {
-        stopPolling("interrupted");
-        toast.info("הזמן המקסימלי למעקב עבר — ניתן להמשיך מההיסטוריה");
-        return;
-      }
-
-      const currentStatuses = liveStatusesRef.current;
-
-      // 1. Fill slots
-      await fillSlots(batchData);
-      if (stoppedRef.current) return;
-
-      // 2. Poll active tasks
-      const activeTasks: { index: number; requestId: string }[] = [];
-      for (const img of batchData.images) {
-        const live = currentStatuses.get(img.index);
-        const requestId = live?.requestId ?? img.requestId;
-        const status = live?.status ?? img.status;
-        if (requestId && status !== "completed" && status !== "failed") {
-          activeTasks.push({ index: img.index, requestId });
+      try {
+        if (Date.now() - pollStartTimeRef.current > VIDEO_POLL_MAX_DURATION_MS) {
+          stopPolling("interrupted");
+          toast.info("הזמן המקסימלי למעקב עבר — ניתן להמשיך מההיסטוריה");
+          return;
         }
-      }
 
-      if (activeTasks.length > 0) {
-        const taskIds = activeTasks.map((t) => t.requestId).join(",");
-        try {
-          const res = await fetch(`/api/generate-video/poll?taskIds=${taskIds}`);
-          if (res.ok) {
-            const data = await res.json();
-            for (const result of data.results ?? []) {
-              const task = activeTasks.find((t) => t.requestId === result.taskId);
-              if (!task) continue;
-              const current = currentStatuses.get(task.index);
+        const currentStatuses = liveStatusesRef.current;
 
-              if (result.state === "success") {
-                updateLiveStatus(task.index, {
-                  ...current, status: "completed", videoUrl: result.videoUrl, requestId: task.requestId,
-                });
-              } else if (result.state === "fail") {
-                updateLiveStatus(task.index, {
-                  ...current, status: "failed", error: result.error, requestId: task.requestId,
-                });
-              } else if (result.state === "generating") {
-                if (current?.status !== "processing") {
-                  updateLiveStatus(task.index, { ...current, status: "processing", requestId: task.requestId });
-                }
-              } else if (result.state === "queuing" || result.state === "waiting") {
-                if (current?.status !== "queued") {
-                  updateLiveStatus(task.index, { ...current, status: "queued", requestId: task.requestId });
-                }
-              } else if (result.state === "error") {
-                console.warn(`[VideoGallery] Poll error for task ${result.taskId}: ${result.error}`);
-              }
-            }
-          } else {
-            console.warn(`[VideoGallery] Poll API returned ${res.status}`);
+        // 1. Fill slots
+        await fillSlots(batchData);
+        if (stoppedRef.current) return;
+
+        // 2. Poll active tasks
+        const activeTasks: { index: number; requestId: string }[] = [];
+        for (const img of batchData.images) {
+          const live = currentStatuses.get(img.index);
+          const requestId = live?.requestId ?? img.requestId;
+          const status = live?.status ?? img.status;
+          if (requestId && status !== "completed" && status !== "failed") {
+            activeTasks.push({ index: img.index, requestId });
           }
-        } catch (err) {
-          console.warn("[VideoGallery] Poll network error:", err);
         }
+
+        if (activeTasks.length > 0) {
+          const taskIds = activeTasks.map((t) => t.requestId).join(",");
+          try {
+            const res = await fetch(`/api/generate-video/poll?taskIds=${taskIds}`);
+            if (res.ok) {
+              const data = await res.json();
+              for (const result of data.results ?? []) {
+                const task = activeTasks.find((t) => t.requestId === result.taskId);
+                if (!task) continue;
+                const current = currentStatuses.get(task.index);
+
+                if (result.state === "success") {
+                  updateLiveStatus(task.index, {
+                    ...current, status: "completed", videoUrl: result.videoUrl, requestId: task.requestId,
+                  });
+                } else if (result.state === "fail") {
+                  updateLiveStatus(task.index, {
+                    ...current, status: "failed", error: result.error, requestId: task.requestId,
+                  });
+                } else if (result.state === "generating") {
+                  if (current?.status !== "processing") {
+                    updateLiveStatus(task.index, { ...current, status: "processing", requestId: task.requestId });
+                  }
+                } else if (result.state === "queuing" || result.state === "waiting") {
+                  if (current?.status !== "queued") {
+                    updateLiveStatus(task.index, { ...current, status: "queued", requestId: task.requestId });
+                  }
+                } else if (result.state === "error") {
+                  console.warn(`[VideoGallery] Poll error for task ${result.taskId}: ${result.error}`);
+                }
+              }
+            } else {
+              console.warn(`[VideoGallery] Poll API returned ${res.status}`);
+            }
+          } catch (err) {
+            console.warn("[VideoGallery] Poll network error:", err);
+          }
+        }
+
+        // 3. Check completion
+        const updatedStatuses = liveStatusesRef.current;
+        const allDone = batchData.images.every((img) => {
+          const live = updatedStatuses.get(img.index);
+          const status = live?.status ?? img.status;
+          return status === "completed" || status === "failed";
+        });
+
+        if (allDone) {
+          stopPolling("completed");
+          return;
+        }
+
+        // 4. Periodic save
+        await saveBatch(batchData, "running");
+
+        // 5. Next cycle
+        scheduleNext();
+      } finally {
+        videoPollingInFlightRef.current = false;
       }
-
-      // 3. Check completion
-      const updatedStatuses = liveStatusesRef.current;
-      const allDone = batchData.images.every((img) => {
-        const live = updatedStatuses.get(img.index);
-        const status = live?.status ?? img.status;
-        return status === "completed" || status === "failed";
-      });
-
-      if (allDone) {
-        stopPolling("completed");
-        return;
-      }
-
-      // 4. Periodic save
-      await saveBatch(batchData, "running");
-
-      // 5. Next cycle
-      scheduleNext();
     };
 
+    pollOnceRef.current = pollOnce;
     pollOnce();
   }, [polling, fillSlots, updateLiveStatus, saveBatch]);
 
@@ -539,9 +548,10 @@ export function VideoGallery() {
       };
     });
 
-    // Create first batch of tasks
-    const firstBatch = updatedImages.slice(0, MAX_ACTIVE_VIDEO_TASKS);
-    for (const img of firstBatch) {
+    // Submit ALL video tasks upfront (sequentially to respect Kie rate limits)
+    // so they run on Kie's server even if the browser tab is backgrounded.
+    // Task creation just returns a taskId instantly — Kie manages its own queue.
+    for (const img of updatedImages) {
       try {
         const res = await fetch("/api/generate-video/start", {
           method: "POST",
@@ -620,6 +630,34 @@ export function VideoGallery() {
       }
     };
   }, []);
+
+  // Recover video polling when tab becomes visible after background.
+  // Chrome throttles/freezes setTimeout in background tabs, killing the loop.
+  // Also reset the poll-start timer so the max-duration timeout doesn't
+  // fire immediately after a long background period.
+  useEffect(() => {
+    if (!polling) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      if (stoppedRef.current) return;
+
+      // Reset the max-duration timer so time spent hidden doesn't count
+      pollStartTimeRef.current = Date.now();
+
+      // Clear any stale/throttled timer and trigger immediate poll
+      if (pollingRef.current) {
+        clearTimeout(pollingRef.current);
+        pollingRef.current = null;
+      }
+      if (pollOnceRef.current) {
+        pollOnceRef.current();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [polling]);
 
   // --- Back to image batch ---
 

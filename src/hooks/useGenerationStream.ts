@@ -82,6 +82,9 @@ export function useGenerationStream() {
   const modeRef = useRef<Mode>("sse");
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingBatchIdRef = useRef<string | null>(null);
+  const pollGenerationRef = useRef(0);
+  const batchRef = useRef(state.currentBatch);
+  batchRef.current = state.currentBatch;
   const isRunning = state.currentBatch?.status === "running";
 
   // Prevent sleep during active generation
@@ -229,9 +232,10 @@ export function useGenerationStream() {
   const startPolling = useCallback(
     (batchId: string) => {
       pollingBatchIdRef.current = batchId;
+      const generation = ++pollGenerationRef.current;
 
       const poll = async () => {
-        if (pollingBatchIdRef.current !== batchId) return;
+        if (pollGenerationRef.current !== generation) return;
 
         const done = await pollOnce(batchId);
         if (done) {
@@ -239,8 +243,11 @@ export function useGenerationStream() {
           return;
         }
 
-        // Smart interval
-        const batch = state.currentBatch;
+        // Bail if a newer generation started while we were polling
+        if (pollGenerationRef.current !== generation) return;
+
+        // Smart interval — use ref to always read latest batch state
+        const batch = batchRef.current;
         const hasPending = batch?.images.some(
           (img) => img.status === "pending" || img.status === "queued"
         );
@@ -250,8 +257,33 @@ export function useGenerationStream() {
 
       poll();
     },
-    [pollOnce, state.currentBatch]
+    [pollOnce]
   );
+
+  // Immediately recover QStash polling when tab becomes visible.
+  // Chrome throttles/freezes setTimeout in background tabs, which can kill
+  // the polling loop. This handler restarts it the moment the user returns.
+  useEffect(() => {
+    if (!isRunning) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      if (modeRef.current !== "qstash") return;
+
+      const batchId = pollingBatchIdRef.current;
+      if (!batchId) return;
+
+      // Kill any stale/throttled timer and restart fresh
+      if (pollingRef.current) {
+        clearTimeout(pollingRef.current);
+        pollingRef.current = null;
+      }
+      startPolling(batchId);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [isRunning, startPolling]);
 
   // --- QStash start ---
 
